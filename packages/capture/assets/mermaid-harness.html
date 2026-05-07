@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Mermaid harness</title>
+    <style>
+      html, body { margin: 0; padding: 0; background: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif; }
+      #wrap { padding: 40px; display: inline-block; }
+      .mermaid { background: #fff; }
+    </style>
+    <script src="./mermaid.min.js"></script>
+  </head>
+  <body>
+    <div id="wrap"><div class="mermaid" id="diagram">graph LR; A[loading]-->B[diagram]</div></div>
+    <script>
+      window.__renderMermaid = async function (spec) {
+        const el = document.getElementById("diagram");
+        el.removeAttribute("data-processed");
+        el.textContent = spec;
+        if (window.mermaid && typeof window.mermaid.run === "function") {
+          await window.mermaid.run({ nodes: [el] });
+        } else if (window.mermaid && typeof window.mermaid.init === "function") {
+          window.mermaid.init(undefined, el);
+        }
+        return true;
+      };
+      if (window.mermaid && typeof window.mermaid.initialize === "function") {
+        window.mermaid.initialize({ startOnLoad: false, theme: "default", securityLevel: "loose" });
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,28 @@
+{
+  "name": "@doceomenter/capture",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "assets"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@doceomenter/shared": "workspace:*",
+    "execa": "9.5.1",
+    "playwright": "1.56.1",
+    "sharp": "0.33.5"
+  },
+  "devDependencies": {
+    "@types/node": "22.9.0",
+    "typescript": "5.6.3",
+    "vitest": "2.1.4"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "doceomenter-fixture-cli",
+  "private": true,
+  "version": "0.0.0",
+  "bin": {
+    "doceo-fixture-cli": "./bin.js"
+  }
+}
