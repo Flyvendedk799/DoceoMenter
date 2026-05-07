@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  unit:
+    name: Build & unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile=false
+      - name: Build packages
+        run: |
+          pnpm --filter @doceomenter/shared build
+          pnpm --filter @doceomenter/claude build
+          pnpm --filter @doceomenter/boot build
+          pnpm --filter @doceomenter/capture build
+          pnpm --filter @doceomenter/render build
+          pnpm --filter @doceomenter/worker build
+      - name: Typecheck web
+        run: pnpm --filter @doceomenter/web typecheck
+      - name: Unit + integration tests
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ~/.cache/ms-playwright
+        run: |
+          pnpm --filter @doceomenter/capture exec playwright install --with-deps chromium
+          pnpm --filter @doceomenter/shared test
+          pnpm --filter @doceomenter/claude test
+          pnpm --filter @doceomenter/boot test
+          pnpm --filter @doceomenter/capture test
+          pnpm --filter @doceomenter/render test
+          pnpm --filter @doceomenter/worker test
+
+  e2e:
+    name: End-to-end (web → worker → artifacts)
+    runs-on: ubuntu-latest
+    needs: [unit]
+    services:
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10.33.0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile=false
+      - name: Install Playwright browsers
+        env: { PLAYWRIGHT_BROWSERS_PATH: ~/.cache/ms-playwright }
+        run: pnpm --filter @doceomenter/capture exec playwright install --with-deps chromium
+      - name: Build packages
+        run: |
+          pnpm --filter @doceomenter/shared build
+          pnpm --filter @doceomenter/claude build
+          pnpm --filter @doceomenter/boot build
+          pnpm --filter @doceomenter/capture build
+          pnpm --filter @doceomenter/render build
+          pnpm --filter @doceomenter/worker build
+          pnpm --filter @doceomenter/web build
+      - name: Start stack
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ~/.cache/ms-playwright
+          REDIS_URL: redis://127.0.0.1:6379
+          DATA_ROOT: /tmp/doceomenter-runs
+          PORT: 3010
+        run: |
+          ./scripts/start-stack.sh
+      - name: E2E
+        env: { E2E_BASE_URL: http://127.0.0.1:3010 }
+        run: pnpm --filter @doceomenter/e2e test
+      - name: Stop stack
+        if: always()
+        run: ./scripts/stop-stack.sh
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stack-logs
+          path: |
+            /tmp/doceomenter-worker.log
+            /tmp/doceomenter-web.log
