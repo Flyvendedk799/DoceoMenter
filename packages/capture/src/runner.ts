@@ -30,8 +30,22 @@ export async function runCapturePlan(
   await mkdir(join(ctx.outDir, "screenshots"), { recursive: true });
   await mkdir(join(ctx.outDir, "videos"), { recursive: true });
 
-  const handle = await launchBrowser();
   const entries: CaptureManifestEntry[] = [];
+  let handle: BrowserHandle;
+  try {
+    handle = await launchBrowser();
+  } catch (e) {
+    const reason = (e as Error).message;
+    ctx.log(`[capture] browser unavailable: ${reason}`);
+    return {
+      entries: plan.shots.map((shot) => ({
+        shotId: shot.id,
+        shot,
+        status: "failed",
+        failureReason: `browser unavailable: ${reason}`,
+      })),
+    };
+  }
   try {
     for (const shot of plan.shots) {
       const startedAt = Date.now();
