@@ -14,7 +14,15 @@ export type RunJobData = {
 };
 
 export function createRedis(redisUrl: string, opts: Partial<RedisOptions> = {}): IORedis {
-  return new IORedis(redisUrl, { maxRetriesPerRequest: null, enableReadyCheck: true, ...opts });
+  const redis = new IORedis(redisUrl, { maxRetriesPerRequest: null, enableReadyCheck: true, ...opts });
+  let lastWarnedAt = 0;
+  redis.on("error", (err) => {
+    const now = Date.now();
+    if (now - lastWarnedAt < 30_000) return;
+    lastWarnedAt = now;
+    console.warn(`[redis] connection error for ${redisUrl}: ${(err as Error).message}`);
+  });
+  return redis;
 }
 
 export function createQueue(redisUrl: string): Queue<RunJobData> {

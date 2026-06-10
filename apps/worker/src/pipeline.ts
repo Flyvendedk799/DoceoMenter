@@ -219,6 +219,13 @@ export async function runPipeline(opts: {
     return state;
   } catch (err) {
     const msg = (err as Error).message;
+    const runningStage = state.stages.find((s) => s.status === "running");
+    if (runningStage) {
+      runningStage.status = "failed";
+      runningStage.message = msg;
+      runningStage.finishedAt = new Date().toISOString();
+      await bus.stage(runId, runningStage);
+    }
     state.state = "failed";
     state.error = msg;
     state.updatedAt = new Date().toISOString();

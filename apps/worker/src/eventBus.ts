@@ -26,6 +26,13 @@ export class RunEventBus {
     if (!this.newSubscriber) return;
     if (!this.subRedis) {
       this.subRedis = this.newSubscriber();
+      let lastWarnedAt = 0;
+      this.subRedis.on("error", (err) => {
+        const now = Date.now();
+        if (now - lastWarnedAt < 30_000) return;
+        lastWarnedAt = now;
+        console.warn(`[redis] pub/sub unavailable: ${(err as Error).message}`);
+      });
       this.subRedis.on("message", (channel: string, message: string) => {
         if (!channel.startsWith(CHANNEL_PREFIX)) return;
         const id = channel.slice(CHANNEL_PREFIX.length);
@@ -44,7 +51,10 @@ export class RunEventBus {
   subscribe(runId: string, listener: (event: RunEvent) => void): () => void {
     const handler = (e: RunEvent) => listener(e);
     this.emitter.on(runId, handler);
-    void this.ensureSubscribed(runId);
+    void this.ensureSubscribed(runId).catch(() => {
+      // Redis pub/sub is optional; callers will still receive local events and
+      // reconnecting clients receive the persisted snapshot from RunStore.
+    });
     return () => this.emitter.off(runId, handler);
   }
 

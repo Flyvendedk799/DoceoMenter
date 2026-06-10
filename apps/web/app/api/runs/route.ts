@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
 import { RunSpecSchema } from "@doceomenter/shared";
-import { getBus, getQueue, getStore, getConfig } from "../../../lib/server";
+import { getBus, getQueue, getStore, getConfig, isRedisReachable } from "../../../lib/server";
 import { initialRunState, runPipeline } from "@doceomenter/worker";
 
 export const runtime = "nodejs";
@@ -23,10 +23,10 @@ export async function POST(req: Request) {
   //  - In single-process dev mode (no Redis available): run the pipeline
   //    in-process via setImmediate so the HTTP request returns quickly.
   const config = getConfig();
-  const useInProcess =
-    process.env.DOCEOMENTER_INPROCESS === "1" || !(await redisReachable(config.REDIS_URL));
+  const redisAvailable = await isRedisReachable();
+  const useInProcess = process.env.DOCEOMENTER_INPROCESS === "1" || !redisAvailable;
   if (useInProcess) {
-    const bus = getBus();
+    const bus = getBus(false);
     const sharedStore = getStore();
     setImmediate(async () => {
       try {
@@ -49,18 +49,4 @@ export async function POST(req: Request) {
 
 function generateRunId(): string {
   return randomBytes(6).toString("hex");
-}
-
-async function redisReachable(url: string): Promise<boolean> {
-  try {
-    const ioredis = await import("ioredis");
-    const Redis = ioredis.Redis ?? (ioredis as unknown as { default: typeof ioredis.Redis }).default;
-    const r = new Redis(url, { lazyConnect: true, connectTimeout: 1000, maxRetriesPerRequest: 0 });
-    await r.connect();
-    await r.ping();
-    await r.quit();
-    return true;
-  } catch {
-    return false;
-  }
 }

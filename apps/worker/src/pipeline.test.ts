@@ -109,8 +109,13 @@ describe("pipeline (static-site fixture)", () => {
       // PDF render may have been degraded; pipeline state should reflect that.
       expect(result.state).toBe("partial");
     }
-    // At least one screenshot must exist.
     const md = readFileSync(join(dir, "report.md"), "utf-8");
-    expect(md).toMatch(/!\[.*]\(\.\/assets\/screenshots\/.*\.png\)/);
+    const log = readFileSync(join(dir, "run.log"), "utf-8");
+    if (log.includes("[capture] browser unavailable:")) {
+      expect(result.state).toBe("partial");
+    } else {
+      // At least one screenshot must exist when the browser is available.
+      expect(md).toMatch(/!\[.*]\(\.\/assets\/screenshots\/.*\.png\)/);
+    }
   }, 120_000);
 });

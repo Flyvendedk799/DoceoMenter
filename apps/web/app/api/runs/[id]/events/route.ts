@@ -1,4 +1,4 @@
-import { getBus, getStore } from "../../../../../lib/server";
+import { getBus, getStore, isRedisReachable } from "../../../../../lib/server";
 import type { RunEvent } from "@doceomenter/shared";
 
 export const runtime = "nodejs";
@@ -11,7 +11,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   if (!state) {
     return new Response("not found", { status: 404 });
   }
-  const bus = getBus();
+  const bus = getBus(await isRedisReachable());
   const stream = new ReadableStream({
     start(controller) {
       const enc = new TextEncoder();
