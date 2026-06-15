@@ -43,5 +43,17 @@ test("home → run → artifacts", async ({ page, baseURL }) => {
   expect(res.ok()).toBe(true);
   const body = await res.text();
   expect(body.length).toBeGreaterThan(400);
-  expect(body).toMatch(/## TL;DR|## Concept/);
+  expect(body).toMatch(/## Reference case brief/);
+
+  const caseExportLink = page.getByRole("link", { name: "Case export (JSON)" });
+  await expect(caseExportLink).toBeVisible();
+  const caseExportHref = await caseExportLink.getAttribute("href");
+  expect(caseExportHref).toBeTruthy();
+  const caseExportRes = await page.context().request.get(new URL(caseExportHref!, baseURL!).toString());
+  expect(caseExportRes.ok()).toBe(true);
+  const caseExport = await caseExportRes.json();
+  expect(caseExport.schemaVersion).toBe("doceomenter.case-study.v1");
+  expect(caseExport.portfolio.metrics.length).toBeGreaterThanOrEqual(3);
+
+  await expect(page.getByRole("link", { name: "Quality report" })).toBeVisible();
 });

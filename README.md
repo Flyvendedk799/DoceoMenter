@@ -2,11 +2,13 @@
 
 > Paste a GitHub URL → get a Markdown report, an HTML presentation, and a PDF — with real screenshots and a short video of the project running.
 
-DoceoMenter is a small full-stack app that turns a repository URL into three artifacts:
+DoceoMenter is a small full-stack app that turns a repository URL into a documentation pack:
 
 - **`report.md`** — a written summary covering concept, vision, technical stack, key modules, and getting started.
 - **`deck.html`** — a self-contained Reveal.js presentation built from the report and capture assets.
 - **`deck.pdf`** — the deck rendered to print-quality PDF.
+- **`case-study.json`** — a portable portfolio/case payload with narrative, metrics, media references, and tech stack.
+- **`quality.json`** — the evidence/media quality gate used to mark a run as done or partial.
 
 Each artifact embeds **real screenshots** of the project (and optionally a **short video walkthrough**) captured by booting the project in a headless Chromium via Playwright. Reports and decks also include a **reference case brief**: a source-grounded quality layer that separates the problem, audience fit, evidence register, media plan, audit metrics, and gaps so the output can be reviewed like a real case artifact instead of a generic repo summary.
 

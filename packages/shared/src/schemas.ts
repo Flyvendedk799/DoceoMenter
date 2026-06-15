@@ -199,3 +199,56 @@ export const CaseBriefSchema = z.object({
     .max(6),
 });
 export type CaseBrief = z.infer<typeof CaseBriefSchema>;
+
+export const QualityCheckStatusSchema = z.enum(["pass", "degraded", "fail"]);
+
+export const QualityReportSchema = z.object({
+  status: QualityCheckStatusSchema,
+  summary: z.string().min(10),
+  checks: z
+    .array(
+      z.object({
+        id: z.string().min(2),
+        label: z.string().min(3),
+        status: QualityCheckStatusSchema,
+        detail: z.string().min(5),
+        evidence: z.string().optional(),
+      }),
+    )
+    .min(1),
+  recommendations: z.array(z.string()).max(10),
+});
+export type QualityReport = z.infer<typeof QualityReportSchema>;
+
+export const CaseStudyExportSchema = z.object({
+  schemaVersion: z.literal("doceomenter.case-study.v1"),
+  generatedAt: z.string(),
+  repository: z.object({
+    owner: z.string(),
+    name: z.string(),
+    ref: z.string(),
+    commitSha: z.string(),
+  }),
+  portfolio: z.object({
+    title: z.string(),
+    description: z.string(),
+    longDescription: z.string(),
+    challenge: z.string(),
+    approach: z.string(),
+    tags: z.array(z.string()),
+    techStack: z.array(z.string()),
+    metrics: z.array(z.object({ label: z.string(), value: z.string(), evidence: z.string() })),
+    media: z.array(
+      z.object({
+        type: z.enum(["image", "video"]),
+        path: z.string(),
+        caption: z.string(),
+        alt: z.string(),
+        shotId: z.string(),
+        source: z.string(),
+      }),
+    ),
+  }),
+  quality: QualityReportSchema,
+});
+export type CaseStudyExport = z.infer<typeof CaseStudyExportSchema>;

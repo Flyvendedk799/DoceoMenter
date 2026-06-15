@@ -11,6 +11,7 @@ export const STAGE_NAMES = [
   "capture",
   "draft-technical",
   "post-process",
+  "quality-check",
   "render",
 ] as const;
 export type StageName = (typeof STAGE_NAMES)[number];
