@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import {
+  CaseBriefSchema,
   CapturePlanSchema,
   CaptionSchema,
   ConceptSchema,
@@ -39,7 +40,12 @@ export type ClaudeClient = {
     concept: Concept,
     capturePlan: CapturePlan,
     manifest: CaptureManifest,
-  ) => Promise<{ technical: Technical; captions: GeneratedContent["captions"]; summary: Summary }>;
+  ) => Promise<{
+    technical: Technical;
+    caseBrief: GeneratedContent["caseBrief"];
+    captions: GeneratedContent["captions"];
+    summary: Summary;
+  }>;
 };
 
 const TOKEN_BUDGET = {
@@ -142,6 +148,7 @@ export function createClaudeClient(opts: ClaudeClientOptions = {}): ClaudeClient
       const tools = [
         TOOL_DEFINITIONS.technicalTool,
         TOOL_DEFINITIONS.captionsTool,
+        TOOL_DEFINITIONS.caseBriefTool,
         TOOL_DEFINITIONS.summaryTool,
       ];
       const captureManifestText = JSON.stringify(
@@ -172,12 +179,17 @@ export function createClaudeClient(opts: ClaudeClientOptions = {}): ClaudeClient
         TechnicalSchema,
         uses.get("submit_technical"),
       );
+      const caseBrief = parseOrThrow(
+        "submit_case_brief",
+        CaseBriefSchema,
+        uses.get("submit_case_brief"),
+      );
       const captionsRaw = uses.get("submit_captions") as { captions?: unknown[] } | undefined;
       const captions = (captionsRaw?.captions ?? []).map((c) =>
         parseOrThrow("submit_captions[]", CaptionSchema, c),
       );
       const summary = parseOrThrow("submit_summary", SummarySchema, uses.get("submit_summary"));
-      return { technical, captions, summary };
+      return { technical, caseBrief, captions, summary };
     },
   };
 }

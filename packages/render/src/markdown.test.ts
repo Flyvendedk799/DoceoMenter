@@ -27,6 +27,44 @@ const baseInput: RenderInput = {
       audience: ["Engineers working on DoceoMenter"],
     },
     capturePlan: { shots: [] },
+    caseBrief: {
+      problem:
+        "Reviewers need a source-grounded explanation of the repository before they can trust the generated documentation.",
+      productNarrative:
+        "The app is documented from repository input through captured output, with the brief separating evidence, media, metrics, and gaps.",
+      audienceFit: [
+        {
+          audience: "Engineers",
+          need: "Understand the runnable product surface and source entrypoint.",
+          evidence: "src/main.tsx:1",
+        },
+      ],
+      evidence: [
+        { claim: "The repository uses Vite.", source: "package.json", confidence: "high" },
+        { claim: "The app has one known entrypoint.", source: "analysis.entrypoints", confidence: "high" },
+        { claim: "A live screenshot was captured.", source: "capture-manifest", confidence: "high" },
+      ],
+      mediaPlan: [
+        {
+          surface: "live-app /",
+          purpose: "Show the actual home view produced by the running project.",
+          captureId: "live-home",
+          evidence: "capture:live-home",
+        },
+      ],
+      auditMetrics: [
+        { label: "Indexed files", value: "5", evidence: "analysis.fileCount" },
+        { label: "Successful captures", value: "1", evidence: "capture-manifest" },
+        { label: "Entrypoints", value: "1", evidence: "analysis.entrypoints" },
+      ],
+      risksAndGaps: [
+        {
+          gap: "No outcome evidence",
+          impact: "The report must avoid product impact claims.",
+          recommendation: "Keep results limited to source-backed metrics.",
+        },
+      ],
+    },
     technical: {
       stack: [{ technology: "Vite", evidence: "package.json" }],
       architecture: "A simple SPA with no backend; bundled by Vite and rendered into #app.",
@@ -58,6 +96,8 @@ describe("renderMarkdown", () => {
     const md = readFileSync(out, "utf-8");
     expect(md).toContain("# demo");
     expect(md).toMatch(/## TL;DR/);
+    expect(md).toMatch(/## Reference case brief/);
+    expect(md).toMatch(/### Evidence register/);
     expect(md).toMatch(/## Concept/);
     expect(md).toMatch(/## Vision/);
     expect(md).toMatch(/## In motion/);

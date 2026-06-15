@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  CaseBriefSchema,
   CapturePlanSchema,
   CaptionSchema,
   ConceptSchema,
@@ -87,13 +88,16 @@ describe("fixture claude client", () => {
         failureReason: i % 2 === 0 ? undefined : "simulated",
       })),
     };
-    const { technical, captions, summary } = await client.draftTechnicalAndCaptions(
+    const { technical, caseBrief, captions, summary } = await client.draftTechnicalAndCaptions(
       baseAnalysis,
       (await client.draftConceptAndPlan(baseAnalysis, { includeVideo: false, outputStyle: "standard" })).concept,
       capturePlan,
       manifest,
     );
     expect(TechnicalSchema.parse(technical)).toBeTruthy();
+    expect(CaseBriefSchema.parse(caseBrief)).toBeTruthy();
+    expect(caseBrief.evidence.length).toBeGreaterThanOrEqual(3);
+    expect(caseBrief.auditMetrics.some((m) => m.label === "Successful captures")).toBe(true);
     expect(SummarySchema.parse(summary)).toBeTruthy();
     const okCount = manifest.entries.filter((e) => e.status === "ok").length;
     expect(captions.length).toBe(okCount);

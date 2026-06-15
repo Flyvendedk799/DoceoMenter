@@ -161,7 +161,7 @@ export async function runPipeline(opts: {
 
     // 7. Claude — technical + captions + summary
     await setStage("draft-technical", { status: "running", message: "Claude technical pass" });
-    const { technical, captions, summary } = await claude.draftTechnicalAndCaptions(
+    const { technical, caseBrief, captions, summary } = await claude.draftTechnicalAndCaptions(
       analysis,
       concept,
       capturePlan,
@@ -172,6 +172,7 @@ export async function runPipeline(opts: {
     const generated: GeneratedContent = {
       concept,
       capturePlan,
+      caseBrief,
       technical,
       captions,
       summary,
