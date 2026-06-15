@@ -3,8 +3,15 @@ import { join } from "node:path";
 import { boot, detectStrategy } from "@doceomenter/boot";
 import { postProcessAssets, runCapturePlan } from "@doceomenter/capture";
 import { createClaudeClient } from "@doceomenter/claude";
-import { renderDeck, renderMarkdown, renderPdfFromDeck } from "@doceomenter/render";
 import {
+  renderCaseStudyExport,
+  renderDeck,
+  renderMarkdown,
+  renderPdfFromDeck,
+  renderQualityReport,
+} from "@doceomenter/render";
+import {
+  STAGE_NAMES,
   resolveRunSpec,
   type Analysis,
   type CaptureManifest,
@@ -184,11 +191,6 @@ export async function runPipeline(opts: {
     await postProcessAssets(captureManifest, join(dir, "assets"));
     await setStage("post-process", { status: "done", message: "done" });
 
-    // 9. Render
-    await setStage("render", { status: "running", message: "markdown + deck + pdf" });
-    const reportMdPath = join(dir, "report.md");
-    const deckHtmlPath = join(dir, "deck.html");
-    const deckPdfPath = join(dir, "deck.pdf");
     const renderInput = {
       runId,
       generatedAt: new Date().toISOString(),
@@ -197,6 +199,26 @@ export async function runPipeline(opts: {
       capture: captureManifest,
       assetsBasePath: "./assets",
     };
+
+    // 9. Quality gate + portable case export
+    await setStage("quality-check", { status: "running", message: "validating evidence + media" });
+    const qualityJsonPath = join(dir, "quality.json");
+    const caseStudyJsonPath = join(dir, "case-study.json");
+    const quality = await renderQualityReport(renderInput, qualityJsonPath);
+    await renderCaseStudyExport(renderInput, quality, caseStudyJsonPath);
+    if (quality.status === "pass") {
+      await setStage("quality-check", { status: "done", message: "pass" });
+    } else {
+      degraded = true;
+      await setStage("quality-check", { status: "degraded", message: quality.status });
+      await bus.log(runId, `[quality] ${quality.summary}`, "warn");
+    }
+
+    // 10. Render
+    await setStage("render", { status: "running", message: "markdown + deck + pdf" });
+    const reportMdPath = join(dir, "report.md");
+    const deckHtmlPath = join(dir, "deck.html");
+    const deckPdfPath = join(dir, "deck.pdf");
     await renderMarkdown(renderInput, reportMdPath);
     await renderDeck(renderInput, deckHtmlPath);
     try {
@@ -209,6 +231,8 @@ export async function runPipeline(opts: {
       reportMd: "report.md",
       deckHtml: "deck.html",
       deckPdf: "deck.pdf",
+      caseStudyJson: "case-study.json",
+      qualityJson: "quality.json",
     };
     await setStage("render", { status: "done", message: "rendered" });
 
@@ -216,7 +240,7 @@ export async function runPipeline(opts: {
     state.state = degraded ? "partial" : "done";
     state.updatedAt = new Date().toISOString();
     await store.write(runId, state);
-    await bus.publish(runId, { type: "done", artifacts: state.artifacts });
+    await bus.publish(runId, { type: "done", state: state.state, artifacts: state.artifacts });
     return state;
   } catch (err) {
     const msg = (err as Error).message;
@@ -240,19 +264,7 @@ export async function runPipeline(opts: {
 }
 
 function buildInitialState(runId: string, spec: RunSpec): RunState {
-  const stages: StageState[] = (
-    [
-      "clone",
-      "analyze",
-      "draft-concept",
-      "detect-runtime",
-      "boot",
-      "capture",
-      "draft-technical",
-      "post-process",
-      "render",
-    ] as const
-  ).map((name) => ({ name, status: "pending" }));
+  const stages: StageState[] = STAGE_NAMES.map((name) => ({ name, status: "pending" }));
   const now = new Date().toISOString();
   return {
     runId,

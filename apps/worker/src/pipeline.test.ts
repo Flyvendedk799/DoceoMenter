@@ -101,6 +101,8 @@ describe("pipeline (static-site fixture)", () => {
     const dir = store.runDir(runId);
     expect(statSync(join(dir, "report.md")).size).toBeGreaterThan(600);
     expect(statSync(join(dir, "deck.html")).size).toBeGreaterThan(2000);
+    expect(statSync(join(dir, "case-study.json")).size).toBeGreaterThan(500);
+    expect(statSync(join(dir, "quality.json")).size).toBeGreaterThan(300);
     // PDF may fail in some environments; if produced, it should be non-trivial.
     try {
       const pdfSize = statSync(join(dir, "deck.pdf")).size;
@@ -110,6 +112,14 @@ describe("pipeline (static-site fixture)", () => {
       expect(result.state).toBe("partial");
     }
     const md = readFileSync(join(dir, "report.md"), "utf-8");
+    const quality = JSON.parse(readFileSync(join(dir, "quality.json"), "utf-8")) as { status: string };
+    const caseStudy = JSON.parse(readFileSync(join(dir, "case-study.json"), "utf-8")) as {
+      schemaVersion: string;
+      portfolio: { media: unknown[]; metrics: unknown[] };
+    };
+    expect(["pass", "degraded", "fail"]).toContain(quality.status);
+    expect(caseStudy.schemaVersion).toBe("doceomenter.case-study.v1");
+    expect(caseStudy.portfolio.metrics.length).toBeGreaterThanOrEqual(3);
     const log = readFileSync(join(dir, "run.log"), "utf-8");
     if (log.includes("[capture] browser unavailable:")) {
       expect(result.state).toBe("partial");

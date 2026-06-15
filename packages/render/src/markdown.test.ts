@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readFileSync } from "node:fs";
 import { renderMarkdown } from "./markdown.js";
+import { renderCaseStudyExport } from "./case-study.js";
+import { renderQualityReport } from "./quality.js";
 import type { RenderInput } from "./types.js";
 
 const baseInput: RenderInput = {
@@ -105,5 +107,22 @@ describe("renderMarkdown", () => {
     expect(md).toMatch(/## Getting started/);
     expect(md).toMatch(/!\[.*]\(\.\/assets\/screenshots\/live-home\.png\)/);
     expect(md.length).toBeGreaterThan(600);
+  });
+
+  it("produces quality and portable case-study JSON exports", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "doceomenter-export-"));
+    const qualityPath = join(dir, "quality.json");
+    const caseStudyPath = join(dir, "case-study.json");
+
+    const quality = await renderQualityReport(baseInput, qualityPath);
+    const payload = await renderCaseStudyExport(baseInput, quality, caseStudyPath);
+
+    expect(quality.status).toBe("pass");
+    expect(payload.schemaVersion).toBe("doceomenter.case-study.v1");
+    expect(payload.portfolio.title).toBe("demo");
+    expect(payload.portfolio.metrics).toHaveLength(3);
+    expect(payload.portfolio.media[0]?.path).toBe("assets/screenshots/live-home.png");
+    expect(readFileSync(qualityPath, "utf-8")).toMatch(/No unsupported outcomes/);
+    expect(readFileSync(caseStudyPath, "utf-8")).toMatch(/doceomenter.case-study.v1/);
   });
 });

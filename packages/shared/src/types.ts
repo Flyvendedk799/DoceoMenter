@@ -1,8 +1,10 @@
 import type {
   Caption,
   CaseBrief,
+  CaseStudyExport,
   CapturePlan,
   Concept,
+  QualityReport,
   RunSpec,
   Shot,
   Summary,
@@ -92,6 +94,8 @@ export type RunState = {
     reportMd?: string;
     deckHtml?: string;
     deckPdf?: string;
+    caseStudyJson?: string;
+    qualityJson?: string;
     zip?: string;
   };
   error?: string;
@@ -134,14 +138,16 @@ export type RunEvent =
   | { type: "stage"; stage: StageState }
   | { type: "log"; line: string; level?: "info" | "warn" | "error" }
   | { type: "asset"; shotId: string; thumbnailUrl?: string; kind: "screenshot" | "video" }
-  | { type: "done"; artifacts: NonNullable<RunState["artifacts"]> }
+  | { type: "done"; state: TerminalState; artifacts: NonNullable<RunState["artifacts"]> }
   | { type: "error"; error: string };
 
 export type {
   Caption,
   CaseBrief,
+  CaseStudyExport,
   CapturePlan,
   Concept,
+  QualityReport,
   RunSpec,
   Shot,
   Summary,

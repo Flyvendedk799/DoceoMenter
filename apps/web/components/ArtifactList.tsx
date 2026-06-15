@@ -40,6 +40,24 @@ export function ArtifactList({ runId, state }: { runId: string; state: RunState 
             Download Markdown
           </a>
         )}
+        {a.caseStudyJson && (
+          <a
+            href={link(a.caseStudyJson)}
+            download
+            className="rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700"
+          >
+            Case export (JSON)
+          </a>
+        )}
+        {a.qualityJson && (
+          <a
+            href={link(a.qualityJson)}
+            download
+            className="rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700"
+          >
+            Quality report
+          </a>
+        )}
         <a
           href={`/api/runs/${runId}/files/state.json`}
           download
