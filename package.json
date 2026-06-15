@@ -10,8 +10,9 @@
   "scripts": {
     "build": "pnpm -r --filter './packages/*' --filter './apps/*' run build",
     "typecheck": "pnpm -r run typecheck",
-    "test": "pnpm -r run test",
-    "lint": "pnpm -r run lint",
+    "test": "pnpm -r --filter './packages/*' --filter './apps/*' run test",
+    "test:e2e": "pnpm --filter @doceomenter/e2e test",
+    "lint": "pnpm -r --if-present run lint",
     "dev:web": "pnpm --filter @doceomenter/web dev",
     "dev:worker": "pnpm --filter @doceomenter/worker dev",
     "verify": "node scripts/verify.mjs"

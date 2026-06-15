@@ -140,3 +140,62 @@ export const CaptionSchema = z.object({
   markdown: z.string().min(5).max(500),
 });
 export type Caption = z.infer<typeof CaptionSchema>;
+
+export const EvidenceConfidenceSchema = z.enum(["high", "medium", "low"]);
+
+export const CaseBriefSchema = z.object({
+  problem: z.string().min(40),
+  productNarrative: z.string().min(60),
+  audienceFit: z
+    .array(
+      z.object({
+        audience: z.string().min(2),
+        need: z.string().min(10),
+        evidence: z.string().min(3),
+      }),
+    )
+    .min(1)
+    .max(5),
+  evidence: z
+    .array(
+      z.object({
+        claim: z.string().min(10),
+        source: z.string().min(3),
+        confidence: EvidenceConfidenceSchema,
+      }),
+    )
+    .min(1)
+    .max(8),
+  mediaPlan: z
+    .array(
+      z.object({
+        surface: z.string().min(2),
+        purpose: z.string().min(10),
+        captureId: z.string().optional(),
+        evidence: z.string().min(3),
+      }),
+    )
+    .min(1)
+    .max(8),
+  auditMetrics: z
+    .array(
+      z.object({
+        label: z.string().min(2),
+        value: z.string().min(1),
+        evidence: z.string().min(3),
+      }),
+    )
+    .min(1)
+    .max(8),
+  risksAndGaps: z
+    .array(
+      z.object({
+        gap: z.string().min(6),
+        impact: z.string().min(10),
+        recommendation: z.string().min(10),
+      }),
+    )
+    .min(1)
+    .max(6),
+});
+export type CaseBrief = z.infer<typeof CaseBriefSchema>;

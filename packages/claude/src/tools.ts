@@ -216,6 +216,105 @@ const captionsTool: Tool = {
   },
 };
 
+const caseBriefTool: Tool = {
+  name: "submit_case_brief",
+  description:
+    "Submit a reference-grade case brief grounded in repo evidence and capture results. This is the quality contract used by reports and decks.",
+  input_schema: {
+    type: "object",
+    additionalProperties: false,
+    required: [
+      "problem",
+      "productNarrative",
+      "audienceFit",
+      "evidence",
+      "mediaPlan",
+      "auditMetrics",
+      "risksAndGaps",
+    ],
+    properties: {
+      problem: { type: "string", minLength: 40 },
+      productNarrative: { type: "string", minLength: 60 },
+      audienceFit: {
+        type: "array",
+        minItems: 1,
+        maxItems: 5,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["audience", "need", "evidence"],
+          properties: {
+            audience: { type: "string" },
+            need: { type: "string", minLength: 10 },
+            evidence: { type: "string" },
+          },
+        },
+      },
+      evidence: {
+        type: "array",
+        minItems: 1,
+        maxItems: 8,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["claim", "source", "confidence"],
+          properties: {
+            claim: { type: "string", minLength: 10 },
+            source: { type: "string" },
+            confidence: { type: "string", enum: ["high", "medium", "low"] },
+          },
+        },
+      },
+      mediaPlan: {
+        type: "array",
+        minItems: 1,
+        maxItems: 8,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["surface", "purpose", "evidence"],
+          properties: {
+            surface: { type: "string" },
+            purpose: { type: "string", minLength: 10 },
+            captureId: { type: "string" },
+            evidence: { type: "string" },
+          },
+        },
+      },
+      auditMetrics: {
+        type: "array",
+        minItems: 1,
+        maxItems: 8,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["label", "value", "evidence"],
+          properties: {
+            label: { type: "string" },
+            value: { type: "string" },
+            evidence: { type: "string" },
+          },
+        },
+      },
+      risksAndGaps: {
+        type: "array",
+        minItems: 1,
+        maxItems: 6,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["gap", "impact", "recommendation"],
+          properties: {
+            gap: { type: "string", minLength: 6 },
+            impact: { type: "string", minLength: 10 },
+            recommendation: { type: "string", minLength: 10 },
+          },
+        },
+      },
+    },
+  },
+};
+
 const summaryTool: Tool = {
   name: "submit_summary",
   description: "Submit the deck title-slide summary.",
@@ -235,5 +334,6 @@ export const TOOL_DEFINITIONS = {
   capturePlanTool,
   technicalTool,
   captionsTool,
+  caseBriefTool,
   summaryTool,
 };

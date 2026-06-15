@@ -1,5 +1,6 @@
 import type {
   Caption,
+  CaseBrief,
   CapturePlan,
   Concept,
   RunSpec,
@@ -123,6 +124,7 @@ export type CaptureManifest = {
 export type GeneratedContent = {
   concept: Concept;
   capturePlan: CapturePlan;
+  caseBrief: CaseBrief;
   technical: Technical;
   captions: Caption[];
   summary: Summary;
@@ -137,6 +139,7 @@ export type RunEvent =
 
 export type {
   Caption,
+  CaseBrief,
   CapturePlan,
   Concept,
   RunSpec,

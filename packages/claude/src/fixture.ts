@@ -1,5 +1,6 @@
 import type {
   Analysis,
+  CaseBrief,
   CaptureManifest,
   CapturePlan,
   Caption,
@@ -24,6 +25,7 @@ export function createFixtureClient(): ClaudeClient {
 
     async draftTechnicalAndCaptions(a, _concept, capturePlan, manifest) {
       const technical = buildTechnical(a);
+      const caseBrief = buildCaseBrief(a, capturePlan, manifest);
       const successful = manifest.entries.filter((e) => e.status === "ok");
       const captions: Caption[] = successful.map((e) => {
         const shot = capturePlan.shots.find((s) => s.id === e.shotId) ?? e.shot;
@@ -42,7 +44,7 @@ export function createFixtureClient(): ClaudeClient {
           `${manifest.entries.length} capture(s); ${successful.length} succeeded`,
         ].map((s) => s.slice(0, 120)),
       };
-      return { technical, captions, summary };
+      return { technical, caseBrief, captions, summary };
     },
   };
 }
@@ -260,6 +262,123 @@ function buildTechnical(a: Analysis): Technical {
     dataFlow,
     keyModules: keyModules.slice(0, 6),
     gettingStarted,
+  };
+}
+
+function buildCaseBrief(a: Analysis, capturePlan: CapturePlan, manifest: CaptureManifest): CaseBrief {
+  const successful = manifest.entries.filter((e) => e.status === "ok");
+  const manifestItems = manifestSummary(a);
+  const entrypointText = a.entrypoints.slice(0, 3).join(", ") || "no clear entrypoint";
+
+  const audienceFit: CaseBrief["audienceFit"] = [];
+  if (a.signals.hasFrontend) {
+    audienceFit.push({
+      audience: "End users",
+      need: "Understand the product through a running browser surface.",
+      evidence: "signals.hasFrontend",
+    });
+  }
+  if (a.signals.hasBackend) {
+    audienceFit.push({
+      audience: "API consumers and operators",
+      need: "See the service boundary, runtime entrypoints, and data movement.",
+      evidence: "signals.hasBackend",
+    });
+  }
+  if (a.signals.isLibrary) {
+    audienceFit.push({
+      audience: "Developers integrating the library",
+      need: "Identify package entrypoints and supported usage paths.",
+      evidence: "manifests.nodePkg",
+    });
+  }
+  if (audienceFit.length === 0) {
+    audienceFit.push({
+      audience: "Technical reviewers",
+      need: "Scan the repository structure and understand what evidence is available.",
+      evidence: "fileIndex",
+    });
+  }
+
+  const mediaPlan: CaseBrief["mediaPlan"] = capturePlan.shots.slice(0, 8).map((shot) => {
+    const captured = successful.find((e) => e.shotId === shot.id);
+    const target = "target" in shot ? shot.target : "capture";
+    const route = "route" in shot ? ` ${shot.route}` : "";
+    const caption = "caption" in shot ? shot.caption : "";
+    return {
+      surface: `${target}${route}`.trim(),
+      purpose: caption.length >= 10 ? caption : `Document ${target}${route} for the case artifact.`,
+      ...(captured ? { captureId: captured.shotId } : {}),
+      evidence: captured ? `capture:${captured.shotId}` : `planned:${shot.id}`,
+    };
+  });
+
+  return {
+    problem:
+      `Reviewers need to understand ${a.repo.owner}/${a.repo.name} from real source evidence, not a generic repository summary. The repo exposes ${a.fileCount} indexed files and ${manifestItems}.`,
+    productNarrative:
+      `${a.repo.name} should be documented as a case from input to observable output: source manifests define the runtime shape, ${entrypointText} anchors the implementation surface, and ${successful.length} successful capture(s) show what could actually be seen during this run.`,
+    audienceFit: audienceFit.slice(0, 5),
+    evidence: [
+      {
+        claim: `Repository analysis indexed ${a.fileCount} files.`,
+        source: "analysis.fileCount",
+        confidence: "high",
+      },
+      {
+        claim: `Primary language set includes ${Object.keys(a.languages).slice(0, 3).join(", ") || "unknown"}.`,
+        source: "analysis.languages",
+        confidence: "high",
+      },
+      {
+        claim: `Runtime classification is ${a.signals.framework ?? "unknown"}.`,
+        source: "analysis.signals.framework",
+        confidence: a.signals.framework && a.signals.framework !== "unknown" ? "medium" : "low",
+      },
+      {
+        claim: `${successful.length} of ${manifest.entries.length} planned capture(s) succeeded.`,
+        source: "capture-manifest",
+        confidence: "high",
+      },
+    ],
+    mediaPlan: mediaPlan.length
+      ? mediaPlan
+      : [
+          {
+            surface: "repository evidence",
+            purpose: "Show the strongest source-backed surface when no runnable UI is available.",
+            evidence: "fileIndex",
+          },
+        ],
+    auditMetrics: [
+      { label: "Indexed files", value: String(a.fileCount), evidence: "analysis.fileCount" },
+      {
+        label: "Languages detected",
+        value: String(Object.keys(a.languages).length),
+        evidence: "analysis.languages",
+      },
+      { label: "Entrypoints", value: String(a.entrypoints.length), evidence: "analysis.entrypoints" },
+      { label: "Planned captures", value: String(capturePlan.shots.length), evidence: "capturePlan.shots" },
+      { label: "Successful captures", value: String(successful.length), evidence: "capture-manifest" },
+    ],
+    risksAndGaps: [
+      successful.length === 0
+        ? {
+            gap: "No successful captures",
+            impact: "The artifact cannot prove what the project looks like in use.",
+            recommendation: "Fix boot or capture selectors, then rerun with at least one live product screenshot.",
+          }
+        : {
+            gap: "Static analysis cannot verify user outcomes",
+            impact: "The artifact should not claim adoption, speed, revenue, or quality impact.",
+            recommendation: "Keep outcome claims out unless they are backed by source files or supplied evidence.",
+          },
+      {
+        gap: "Line-accurate citations are limited in fixture mode",
+        impact: "The generated brief can identify files and manifests but not prove every behavior line-by-line.",
+        recommendation: "Use live Claude mode with richer repo context for reference-grade citations.",
+      },
+    ],
   };
 }
 

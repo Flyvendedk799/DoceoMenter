@@ -43,6 +43,13 @@ async function buildDeckHtml(input: RenderInput): Promise<string> {
   .reveal pre code { max-height: 60vh; }
   .reveal .meta { font-size: 0.5em; color: #777; margin-top: 1em; }
   .reveal .tldr li { margin-bottom: 0.4em; }
+  .reveal .brief-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.1em; font-size: 0.58em; }
+  .reveal .brief-card { border: 1px solid rgba(0,0,0,0.12); border-radius: 8px; padding: 0.85em; }
+  .reveal .brief-card h3 { margin: 0 0 0.45em; font-size: 1.1em; }
+  .reveal .brief-card ul { margin: 0; }
+  .reveal .metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.7em; margin-top: 0.8em; }
+  .reveal .metric-tile { border: 1px solid rgba(0,0,0,0.12); border-radius: 8px; padding: 0.65em; }
+  .reveal .metric-tile strong { display: block; font-size: 1.5em; }
   @media print {
     .reveal img, .reveal video { box-shadow: none; }
   }
@@ -70,7 +77,7 @@ async function buildDeckHtml(input: RenderInput): Promise<string> {
 
 function buildSlides(input: RenderInput): string {
   const { content, analysis, capture, assetsBasePath, runId, generatedAt } = input;
-  const { concept, technical, summary, captions } = content;
+  const { concept, caseBrief, technical, summary, captions } = content;
   const { repo } = analysis;
 
   const sections: string[] = [];
@@ -86,6 +93,71 @@ function buildSlides(input: RenderInput): string {
   sections.push(`<section>
     <h2>TL;DR</h2>
     <ul class="tldr">${summary.tldr.map((b) => `<li>${escapeHtml(b)}</li>`).join("")}</ul>
+  </section>`);
+
+  sections.push(`<section>
+    <h2>Reference-grade brief</h2>
+    <div class="brief-grid">
+      <div class="brief-card">
+        <h3>Problem</h3>
+        <p>${escapeHtml(caseBrief.problem)}</p>
+      </div>
+      <div class="brief-card">
+        <h3>Product narrative</h3>
+        <p>${escapeHtml(caseBrief.productNarrative)}</p>
+      </div>
+    </div>
+  </section>`);
+
+  sections.push(`<section>
+    <h2>Audience & evidence</h2>
+    <div class="brief-grid">
+      <div class="brief-card">
+        <h3>Audience fit</h3>
+        <ul>${caseBrief.audienceFit
+          .slice(0, 4)
+          .map((a) => `<li><strong>${escapeHtml(a.audience)}</strong>: ${escapeHtml(a.need)}</li>`)
+          .join("")}</ul>
+      </div>
+      <div class="brief-card">
+        <h3>Evidence register</h3>
+        <ul>${caseBrief.evidence
+          .slice(0, 4)
+          .map((e) => `<li>${escapeHtml(e.claim)} <code>${escapeHtml(e.source)}</code></li>`)
+          .join("")}</ul>
+      </div>
+    </div>
+    <div class="metric-grid">${caseBrief.auditMetrics
+      .slice(0, 6)
+      .map(
+        (m) => `<div class="metric-tile"><strong>${escapeHtml(m.value)}</strong>${escapeHtml(m.label)}<br><code>${escapeHtml(m.evidence)}</code></div>`,
+      )
+      .join("")}</div>
+  </section>`);
+
+  sections.push(`<section>
+    <h2>Media plan & gaps</h2>
+    <div class="brief-grid">
+      <div class="brief-card">
+        <h3>Media surfaces</h3>
+        <ul>${caseBrief.mediaPlan
+          .slice(0, 5)
+          .map(
+            (m) =>
+              `<li><strong>${escapeHtml(m.surface)}</strong>: ${escapeHtml(m.purpose)} ${
+                m.captureId ? `<code>${escapeHtml(m.captureId)}</code>` : "<em>gap</em>"
+              }</li>`,
+          )
+          .join("")}</ul>
+      </div>
+      <div class="brief-card">
+        <h3>Risks / gaps</h3>
+        <ul>${caseBrief.risksAndGaps
+          .slice(0, 4)
+          .map((g) => `<li><strong>${escapeHtml(g.gap)}</strong>: ${escapeHtml(g.recommendation)}</li>`)
+          .join("")}</ul>
+      </div>
+    </div>
   </section>`);
 
   // Concept

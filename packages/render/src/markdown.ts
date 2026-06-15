@@ -11,7 +11,7 @@ export async function renderMarkdown(input: RenderInput, outPath: string): Promi
 
 function buildMarkdown(input: RenderInput): string {
   const { content, analysis, capture, assetsBasePath, runId, generatedAt } = input;
-  const { concept, technical, summary, captions } = content;
+  const { concept, caseBrief, technical, summary, captions } = content;
   const { repo } = analysis;
 
   const lines: string[] = [];
@@ -29,6 +29,58 @@ function buildMarkdown(input: RenderInput): string {
   lines.push("## TL;DR");
   lines.push("");
   for (const b of summary.tldr) lines.push(`- ${b}`);
+  lines.push("");
+
+  // Reference-grade case brief
+  lines.push("## Reference case brief");
+  lines.push("");
+  lines.push("### Problem");
+  lines.push(caseBrief.problem);
+  lines.push("");
+  lines.push("### Product narrative");
+  lines.push(caseBrief.productNarrative);
+  lines.push("");
+  lines.push("### Audience fit");
+  lines.push("");
+  lines.push("| Audience | Need | Evidence |");
+  lines.push("|---|---|---|");
+  for (const a of caseBrief.audienceFit) {
+    lines.push(`| ${escapeCell(a.audience)} | ${escapeCell(a.need)} | \`${escapeCell(a.evidence)}\` |`);
+  }
+  lines.push("");
+  lines.push("### Evidence register");
+  lines.push("");
+  lines.push("| Claim | Source | Confidence |");
+  lines.push("|---|---|---|");
+  for (const e of caseBrief.evidence) {
+    lines.push(`| ${escapeCell(e.claim)} | \`${escapeCell(e.source)}\` | ${e.confidence} |`);
+  }
+  lines.push("");
+  lines.push("### Media plan");
+  lines.push("");
+  lines.push("| Surface | Purpose | Evidence | Capture |");
+  lines.push("|---|---|---|---|");
+  for (const m of caseBrief.mediaPlan) {
+    lines.push(
+      `| ${escapeCell(m.surface)} | ${escapeCell(m.purpose)} | \`${escapeCell(m.evidence)}\` | ${
+        m.captureId ? `\`${escapeCell(m.captureId)}\`` : "gap"
+      } |`,
+    );
+  }
+  lines.push("");
+  lines.push("### Audit metrics");
+  lines.push("");
+  lines.push("| Metric | Value | Evidence |");
+  lines.push("|---|---:|---|");
+  for (const m of caseBrief.auditMetrics) {
+    lines.push(`| ${escapeCell(m.label)} | ${escapeCell(m.value)} | \`${escapeCell(m.evidence)}\` |`);
+  }
+  lines.push("");
+  lines.push("### Risks & gaps");
+  lines.push("");
+  for (const g of caseBrief.risksAndGaps) {
+    lines.push(`- **${g.gap}** — ${g.impact} Recommendation: ${g.recommendation}`);
+  }
   lines.push("");
 
   // Concept
