@@ -13,6 +13,7 @@ const STAGE_LABEL: Record<StageState["name"], string> = {
   capture: "Playwright capture (screenshots + video)",
   "draft-technical": "Claude — technical write-up",
   "post-process": "Post-processing assets",
+  "quality-check": "Quality gate + case export",
   render: "Rendering Markdown / HTML / PDF",
 };
 
@@ -38,7 +39,7 @@ export function RunProgress({ initial }: { initial: RunState }) {
         } else if (event.type === "asset" && event.thumbnailUrl) {
           setThumbs((t) => ({ ...t, [event.shotId]: event.thumbnailUrl! }));
         } else if (event.type === "done") {
-          setState((s) => ({ ...s, state: "done", artifacts: event.artifacts }));
+          setState((s) => ({ ...s, state: event.state, artifacts: event.artifacts }));
         } else if (event.type === "error") {
           setState((s) => ({ ...s, state: "failed", error: event.error }));
         }
