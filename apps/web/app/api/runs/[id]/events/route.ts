@@ -1,8 +1,10 @@
 import { getBus, getStore, isRedisReachable } from "../../../../../lib/server";
-import type { RunEvent } from "@doceomenter/shared";
+import type { RunEvent, TerminalState } from "@doceomenter/shared";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const TERMINAL_STATES = new Set<string>(["done", "failed", "partial", "cancelled"]);
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const runId = params.id;
@@ -21,7 +23,9 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       // Initial snapshot — emit each stage as a stage event so the UI can
       // catch up to current status when reconnecting.
       for (const s of state.stages) send({ type: "stage", stage: s });
-      if (state.artifacts) send({ type: "done", artifacts: state.artifacts });
+      if (state.artifacts && TERMINAL_STATES.has(state.state)) {
+        send({ type: "done", state: state.state as TerminalState, artifacts: state.artifacts });
+      }
       if (state.error) send({ type: "error", error: state.error });
 
       const off = bus.subscribe(runId, (e: RunEvent) => send(e));

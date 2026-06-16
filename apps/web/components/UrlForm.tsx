@@ -1,9 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { type FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
 const URL_RE = /^https?:\/\/github\.com\/[^/]+\/[^/]+(?:\.git)?\/?$/;
+const OUTPUT_STYLES = [
+  { value: "concise", label: "Concise", caption: "Fast brief" },
+  { value: "standard", label: "Standard", caption: "Balanced" },
+  { value: "deep", label: "Deep", caption: "Reference case" },
+] as const;
 
 export function UrlForm() {
   const router = useRouter();
@@ -17,7 +22,7 @@ export function UrlForm() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | undefined>();
 
-  async function onSubmit(e: React.FormEvent) {
+  async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(undefined);
     if (!URL_RE.test(url.trim())) {
@@ -52,69 +57,132 @@ export function UrlForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4">
-      <div className="flex gap-2">
-        <input
-          type="url"
-          required
-          aria-label="GitHub repository URL"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="https://github.com/owner/repo"
-          className="flex-1 rounded-md border border-zinc-300 bg-white px-3 py-2 text-base outline-none focus:ring-2 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-900"
-        />
-        <button
-          type="submit"
-          disabled={submitting}
-          className="rounded-md bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-700 disabled:opacity-60"
-        >
-          {submitting ? "Starting…" : "Generate"}
-        </button>
-      </div>
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      <details open={advanced} onToggle={(e) => setAdvanced((e.target as HTMLDetailsElement).open)}>
-        <summary className="cursor-pointer text-sm text-zinc-600 dark:text-zinc-400">Advanced</summary>
-        <div className="mt-3 grid grid-cols-1 gap-3 rounded-md border border-zinc-200 p-4 text-sm dark:border-zinc-800 sm:grid-cols-2">
-          <label className="flex flex-col gap-1">
-            <span>Branch / ref</span>
-            <input
-              value={ref}
-              onChange={(e) => setRef(e.target.value)}
-              className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span>Output style</span>
-            <select
-              value={outputStyle}
-              onChange={(e) => setOutputStyle(e.target.value as typeof outputStyle)}
-              className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
-            >
-              <option value="concise">Concise</option>
-              <option value="standard">Standard</option>
-              <option value="deep">Deep</option>
-            </select>
-          </label>
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={includeVideo} onChange={(e) => setIncludeVideo(e.target.checked)} />
-            <span>Include video walkthrough</span>
-          </label>
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={bootApp} onChange={(e) => setBootApp(e.target.checked)} />
-            <span>Boot the app (uncheck for libraries)</span>
-          </label>
-          <label className="col-span-full flex flex-col gap-1">
-            <span>Anthropic API key (optional, BYOK)</span>
-            <input
-              type="password"
-              autoComplete="off"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              className="rounded border border-zinc-300 px-2 py-1 font-mono dark:border-zinc-700 dark:bg-zinc-900"
-            />
-          </label>
+    <form
+      onSubmit={onSubmit}
+      className="rounded-lg border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+    >
+      <div className="space-y-5 p-4 sm:p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">New run</p>
+            <h2 className="mt-1 text-xl font-semibold tracking-tight">Repository intake</h2>
+          </div>
+          <div className="flex flex-wrap gap-2 text-xs">
+            <span className="rounded-full bg-sky-100 px-2.5 py-1 font-medium text-sky-800 dark:bg-sky-500/15 dark:text-sky-300">
+              Playwright capture
+            </span>
+            <span className="rounded-full bg-amber-100 px-2.5 py-1 font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">
+              Quality gate
+            </span>
+          </div>
         </div>
-      </details>
+
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+          <label className="min-w-0 space-y-2">
+            <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
+              GitHub repository URL
+            </span>
+            <input
+              type="url"
+              required
+              aria-label="GitHub repository URL"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://github.com/owner/repo"
+              className="h-12 w-full rounded-md border border-zinc-300 bg-white px-3 text-base outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 dark:border-zinc-700 dark:bg-zinc-950"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={submitting}
+            className="h-12 rounded-md bg-zinc-950 px-5 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-emerald-500 dark:text-zinc-950 dark:hover:bg-emerald-400"
+          >
+            {submitting ? "Starting..." : "Generate"}
+          </button>
+        </div>
+
+        {error && (
+          <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/70 dark:bg-red-950/50 dark:text-red-300">
+            {error}
+          </p>
+        )}
+
+        <div className="grid gap-3 sm:grid-cols-3">
+          {OUTPUT_STYLES.map((style) => (
+            <button
+              key={style.value}
+              type="button"
+              onClick={() => setOutputStyle(style.value)}
+              aria-pressed={outputStyle === style.value}
+              className={`rounded-md border px-3 py-3 text-left transition ${
+                outputStyle === style.value
+                  ? "border-emerald-500 bg-emerald-50 text-emerald-950 shadow-sm dark:border-emerald-400 dark:bg-emerald-500/10 dark:text-emerald-100"
+                  : "border-zinc-200 bg-zinc-50 text-zinc-800 hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:border-zinc-700"
+              }`}
+            >
+              <span className="block text-sm font-semibold">{style.label}</span>
+              <span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">
+                {style.caption}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <details
+          open={advanced}
+          onToggle={(e) => setAdvanced((e.target as HTMLDetailsElement).open)}
+          className="rounded-md border border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950/60"
+        >
+          <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            Advanced controls
+          </summary>
+          <div className="grid grid-cols-1 gap-4 border-t border-zinc-200 p-4 text-sm dark:border-zinc-800 sm:grid-cols-2">
+            <label className="flex flex-col gap-2">
+              <span className="font-medium text-zinc-800 dark:text-zinc-200">Branch / ref</span>
+              <input
+                value={ref}
+                onChange={(e) => setRef(e.target.value)}
+                className="h-10 rounded-md border border-zinc-300 bg-white px-3 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 dark:border-zinc-700 dark:bg-zinc-900"
+              />
+            </label>
+
+            <div className="flex flex-col gap-2">
+              <span className="font-medium text-zinc-800 dark:text-zinc-200">Capture settings</span>
+              <label className="flex min-h-10 items-center justify-between gap-3 rounded-md border border-zinc-200 bg-white px-3 dark:border-zinc-800 dark:bg-zinc-900">
+                <span>Include video walkthrough</span>
+                <input
+                  className="h-4 w-4 accent-emerald-600"
+                  type="checkbox"
+                  checked={includeVideo}
+                  onChange={(e) => setIncludeVideo(e.target.checked)}
+                />
+              </label>
+              <label className="flex min-h-10 items-center justify-between gap-3 rounded-md border border-zinc-200 bg-white px-3 dark:border-zinc-800 dark:bg-zinc-900">
+                <span>Boot the app</span>
+                <input
+                  className="h-4 w-4 accent-emerald-600"
+                  type="checkbox"
+                  checked={bootApp}
+                  onChange={(e) => setBootApp(e.target.checked)}
+                />
+              </label>
+            </div>
+
+            <label className="flex flex-col gap-2 sm:col-span-2">
+              <span className="font-medium text-zinc-800 dark:text-zinc-200">
+                Anthropic API key (optional, BYOK)
+              </span>
+              <input
+                type="password"
+                autoComplete="off"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                className="h-10 rounded-md border border-zinc-300 bg-white px-3 font-mono text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 dark:border-zinc-700 dark:bg-zinc-900"
+              />
+            </label>
+          </div>
+        </details>
+      </div>
     </form>
   );
 }
