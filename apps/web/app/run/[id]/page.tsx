@@ -9,8 +9,10 @@ export default async function RunPage({ params }: { params: { id: string } }) {
   const state = await store.read(params.id);
   if (!state) notFound();
   return (
-    <main className="mx-auto max-w-3xl px-6 py-12">
-      <RunProgress initial={state} />
+    <main className="min-h-screen bg-zinc-50 px-5 py-6 text-zinc-950 dark:bg-zinc-950 dark:text-zinc-50 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl">
+        <RunProgress initial={state} />
+      </div>
     </main>
   );
 }

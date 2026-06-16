@@ -31,6 +31,9 @@ test("home → run → artifacts", async ({ page, baseURL }) => {
   await expect(page.getByRole("link", { name: /Open presentation/ })).toBeVisible({
     timeout: 90_000,
   });
+  await expect(page.getByText("Reference readiness")).toBeVisible();
+  await expect(page.getByText("Case export preview")).toBeVisible();
+  await expect(page.getByText("Generated outputs")).toBeVisible();
 
   // The Markdown download should be present too.
   const mdLink = page.getByRole("link", { name: "Download Markdown" });
@@ -54,6 +57,7 @@ test("home → run → artifacts", async ({ page, baseURL }) => {
   const caseExport = await caseExportRes.json();
   expect(caseExport.schemaVersion).toBe("doceomenter.case-study.v1");
   expect(caseExport.portfolio.metrics.length).toBeGreaterThanOrEqual(3);
+  await expect(page.getByTestId("case-export-title")).toHaveText(caseExport.portfolio.title);
 
   await expect(page.getByRole("link", { name: "Quality report" })).toBeVisible();
 });
