@@ -118,7 +118,7 @@ The integration test in `apps/worker/src/pipeline.test.ts` exercises the full pi
 | Var | Default | Purpose |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | — | Server-wide Claude key; absent → fixture client |
-| `ANTHROPIC_MODEL_PRIMARY` | `claude-opus-4-7` | Primary model |
+| `ANTHROPIC_MODEL_PRIMARY` | `claude-opus-4-8` | Primary model |
 | `ANTHROPIC_MODEL_FALLBACK` | `claude-sonnet-4-6` | Used on rate-limit |
 | `REDIS_URL` | `redis://127.0.0.1:6379` | Queue + pub/sub |
 | `DATA_ROOT` | `data/runs` | Where artifacts are persisted |

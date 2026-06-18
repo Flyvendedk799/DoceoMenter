@@ -1,7 +1,7 @@
 import { writeFile } from "node:fs/promises";
-import { basename, relative } from "node:path";
 import type { CaptureManifestEntry } from "@doceomenter/shared";
 import type { RenderInput } from "./types.js";
+import { assetRef, hasRenderableMedia } from "./assets.js";
 
 export async function renderMarkdown(input: RenderInput, outPath: string): Promise<string> {
   const md = buildMarkdown(input);
@@ -103,7 +103,7 @@ function buildMarkdown(input: RenderInput): string {
   lines.push("");
 
   // In motion
-  const successful = capture.entries.filter((e) => e.status === "ok");
+  const successful = capture.entries.filter((e) => e.status === "ok" && hasRenderableMedia(e));
   if (successful.length > 0) {
     lines.push("## In motion");
     lines.push("");
@@ -128,9 +128,7 @@ function buildMarkdown(input: RenderInput): string {
     lines.push("");
     for (const e of archShots) {
       if ("diagramSpec" in e.shot && "mermaid" in e.shot.diagramSpec) {
-        lines.push("```mermaid");
-        lines.push(e.shot.diagramSpec.mermaid);
-        lines.push("```");
+        lines.push(...fencedBlock(e.shot.diagramSpec.mermaid, "mermaid"));
         lines.push("");
       }
     }
@@ -166,9 +164,7 @@ function buildMarkdown(input: RenderInput): string {
   // Getting started
   lines.push("## Getting started");
   lines.push("");
-  lines.push("```bash");
-  for (const cmd of technical.gettingStarted) lines.push(cmd);
-  lines.push("```");
+  lines.push(...fencedBlock(technical.gettingStarted.join("\n"), "bash"));
   lines.push("");
 
   // Footer
@@ -185,14 +181,16 @@ function buildMarkdown(input: RenderInput): string {
 function embedAsset(e: CaptureManifestEntry, captionMd: string, assetsBasePath: string): string[] {
   if (!e.outputs) return [];
   const out: string[] = [];
-  if (e.outputs.pngPath) {
-    const relPath = `${assetsBasePath}/${basenameNorm(e.outputs.pngPath)}`;
-    out.push(`![${escapeAlt(captionMd)}](${relPath})`);
+  // The report keeps the original PNG (most portable across markdown/PDF
+  // viewers); the web deck uses the smaller WebP.
+  const img = e.outputs.pngPath ?? e.outputs.webpPath;
+  if (img) {
+    out.push(`![${escapeAlt(captionMd)}](${assetRef(assetsBasePath, img, "screenshots")})`);
   } else if (e.outputs.mp4Path || e.outputs.webmPath) {
     const v = e.outputs.mp4Path ?? e.outputs.webmPath!;
-    const relV = `${assetsBasePath}/${basenameNorm(v)}`;
+    const relV = assetRef(assetsBasePath, v, "videos");
     if (e.outputs.posterPath) {
-      const relP = `${assetsBasePath}/${basenameNorm(e.outputs.posterPath)}`;
+      const relP = assetRef(assetsBasePath, e.outputs.posterPath, "videos");
       out.push(`[![Watch the recording](${relP})](${relV})`);
     } else {
       out.push(`[Watch the recording](${relV})`);
@@ -200,24 +198,39 @@ function embedAsset(e: CaptureManifestEntry, captionMd: string, assetsBasePath: 
   }
   if (captionMd) {
     out.push("");
-    out.push(`*${captionMd.replace(/\n/g, " ")}*`);
+    out.push(`*${escapeInline(captionMd.replace(/\s*\n\s*/g, " "))}*`);
   }
   return out;
 }
 
-function basenameNorm(p: string): string {
-  // assetsBasePath is e.g. "./assets" or "../assets/screenshots"; we expect
-  // the renderer's base path to point to a directory that already contains
-  // the file, so we flatten to basename + sub-folder when applicable.
-  const segments = p.split(/[/\\]/);
-  // Keep last two segments to preserve "screenshots/foo.png" vs "videos/bar.mp4"
-  return segments.slice(-2).join("/");
+/**
+ * Emit a fenced code block whose fence is one backtick longer than the longest
+ * backtick run inside `content`, so untrusted content can never break out of
+ * the fence (CommonMark fence rule).
+ */
+function fencedBlock(content: string, lang: string): string[] {
+  let longest = 0;
+  for (const m of content.matchAll(/`+/g)) longest = Math.max(longest, m[0].length);
+  const fence = "`".repeat(Math.max(3, longest + 1));
+  return [`${fence}${lang}`, content, fence];
 }
 
 function escapeCell(s: string): string {
-  return s.replace(/\|/g, "\\|");
+  // Cells live in a single table row, some wrapped in inline code spans.
+  // Neutralise pipes (column breaks), newlines (row breaks), and backticks
+  // (code-span breakout) so untrusted text can't corrupt the table.
+  return s
+    .replace(/\\/g, "\\\\")
+    .replace(/\r?\n/g, " ")
+    .replace(/`/g, "'")
+    .replace(/\|/g, "\\|");
 }
 
 function escapeAlt(s: string): string {
-  return s.replace(/[\[\]]/g, "");
+  return s.replace(/[\[\]]/g, "").replace(/\r?\n/g, " ");
+}
+
+function escapeInline(s: string): string {
+  // Neutralise markdown emphasis/code markers in an inline run we wrap in `*…*`.
+  return s.replace(/[*_`]/g, "\\$&");
 }

@@ -49,10 +49,31 @@ export async function launchBrowser(): Promise<BrowserHandle> {
 
     if (opts.blockNetwork && opts.blockNetwork !== "none") {
       const allow = new Set(
-        (opts.liveAppOriginAllowList ?? []).map((u) => new URL(u).origin),
+        (opts.liveAppOriginAllowList ?? [])
+          .map((u) => {
+            try {
+              return new URL(u).origin;
+            } catch {
+              return undefined;
+            }
+          })
+          .filter((o): o is string => o !== undefined),
       );
       await ctx.route("**/*", (route) => {
-        const origin = new URL(route.request().url()).origin;
+        const url = route.request().url();
+        // data:/blob: and any unparseable URL: let it through rather than
+        // throwing inside the handler (which would hang the request).
+        if (url.startsWith("data:") || url.startsWith("blob:")) {
+          route.continue();
+          return;
+        }
+        let origin: string;
+        try {
+          origin = new URL(url).origin;
+        } catch {
+          route.continue();
+          return;
+        }
         if (
           opts.blockNetwork === "all" &&
           origin.startsWith("http") &&

@@ -5,12 +5,9 @@ const DEFAULT_PORT = 5173;
 export function detectStrategy(a: Analysis, dockerEnabled = false): BootStrategy {
   const pkg = a.manifests.nodePkg;
 
-  // 1. Next.js
+  // 1. Next.js — supports both the root and the common `src/` layout.
   if (pkg && (pkg.deps.includes("next") || pkg.devDeps.includes("next"))) {
-    if (
-      a.fileIndex.some((f) => f.path.startsWith("pages/")) ||
-      a.fileIndex.some((f) => f.path.startsWith("app/"))
-    ) {
+    if (a.fileIndex.some((f) => /^(src\/)?(app|pages)\//.test(f.path))) {
       return { kind: "next", pkgManager: detectPM(a), port: 3000 };
     }
   }
@@ -134,7 +131,13 @@ function pickPythonCmd(a: Analysis, framework: "fastapi" | "flask" | "django"): 
     return `python -m uvicorn ${mod}:app --host 0.0.0.0 --port 8000`;
   }
   if (framework === "flask") {
-    return `python -m flask run --host 0.0.0.0 --port 5000`;
+    // `flask run` needs to know the app module; without --app it only works if
+    // an app.py/wsgi.py sits in the cwd. Point it at a discovered entry module.
+    const entry = a.fileIndex.find((f) => /(^|\/)(app|wsgi|main|application)\.py$/.test(f.path));
+    const mod = entry ? entry.path.replace(/\//g, ".").replace(/\.py$/, "") : "app";
+    return `python -m flask --app ${mod} run --host 0.0.0.0 --port 5000`;
   }
-  return `python manage.py runserver 0.0.0.0:8000`;
+  // Django: locate manage.py rather than assuming it is at the repo root.
+  const manage = a.fileIndex.find((f) => /(^|\/)manage\.py$/.test(f.path));
+  return `python ${manage ? manage.path : "manage.py"} runserver 0.0.0.0:8000`;
 }

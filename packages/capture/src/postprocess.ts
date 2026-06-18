@@ -11,11 +11,16 @@ export async function postProcessAssets(manifest: CaptureManifest, outDir: strin
     const base = basename(png, extname(png));
     const webp = join(dir, `${base}.webp`);
     const thumb = join(dir, `${base}-thumb.webp`);
-    const buf = await readFile(png);
-    await sharp(buf).webp({ quality: 90 }).toFile(webp);
-    await sharp(buf).resize({ width: 320 }).webp({ quality: 80 }).toFile(thumb);
-    e.outputs.webpPath = webp;
-    e.outputs.thumbPath = thumb;
+    try {
+      const buf = await readFile(png);
+      await sharp(buf).webp({ quality: 90 }).toFile(webp);
+      await sharp(buf).resize({ width: 320 }).webp({ quality: 80 }).toFile(thumb);
+      e.outputs.webpPath = webp;
+      e.outputs.thumbPath = thumb;
+    } catch {
+      // A single corrupt/unreadable image must not abort post-processing or
+      // drop the manifest for every other asset. The PNG remains usable.
+    }
   }
   await writeFile(join(outDir, "manifest.json"), JSON.stringify(manifest, null, 2));
 }

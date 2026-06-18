@@ -13,15 +13,19 @@ export async function bootDockerCompose(
     timeout: 5 * 60_000,
   });
   const url = `http://127.0.0.1:${port}`;
-  await pollUntilReady(url, 60_000, log);
-  return {
-    url,
-    kill: async () => {
-      try {
-        await execa("docker", ["compose", "down"], { cwd: repoDir, timeout: 60_000 });
-      } catch (e) {
-        log(`[boot] docker compose down failed: ${(e as Error).message}`);
-      }
-    },
+  const down = async () => {
+    try {
+      await execa("docker", ["compose", "down"], { cwd: repoDir, timeout: 60_000 });
+    } catch (e) {
+      log(`[boot] docker compose down failed: ${(e as Error).message}`);
+    }
   };
+  try {
+    await pollUntilReady(url, 60_000, log);
+  } catch (e) {
+    // Never leave containers running when the service never became ready.
+    await down();
+    throw e;
+  }
+  return { url, kill: down };
 }

@@ -38,7 +38,9 @@ export async function transcodeWebmToMp4(inputWebm: string, outputMp4: string): 
 export async function extractPosterFrame(inputMp4OrWebm: string, outputJpg: string): Promise<void> {
   await execa(
     "ffmpeg",
-    ["-y", "-ss", "1.0", "-i", inputMp4OrWebm, "-vframes", "1", "-q:v", "3", outputJpg],
+    // Seek to an early frame that exists even on sub-second clips (a 1.0s seek
+    // past EOF yields a blank or missing poster).
+    ["-y", "-ss", "0.3", "-i", inputMp4OrWebm, "-frames:v", "1", "-q:v", "3", outputJpg],
     { timeout: 30_000 },
   );
 }

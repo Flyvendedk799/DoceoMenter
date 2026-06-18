@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { boot, detectStrategy } from "@doceomenter/boot";
 import { postProcessAssets, runCapturePlan } from "@doceomenter/capture";
@@ -13,6 +13,7 @@ import {
 import {
   STAGE_NAMES,
   resolveRunSpec,
+  redactSpec,
   type Analysis,
   type CaptureManifest,
   type GeneratedContent,
@@ -35,6 +36,9 @@ export async function runPipeline(opts: {
 }): Promise<RunState> {
   const { runId, spec, config, store, bus } = opts;
   const resolved = resolveRunSpec(spec);
+  // Wall-clock guard: aborts the run when MAX_RUN_SECONDS is exceeded so a
+  // pathological repo can never pin the single-concurrency worker indefinitely.
+  const ac = new AbortController();
   const dir = await store.ensure(runId);
   let state = (await store.read(runId)) ?? buildInitialState(runId, spec);
   state.state = "running";
@@ -46,6 +50,9 @@ export async function runPipeline(opts: {
     name: StageState["name"],
     patch: Partial<StageState> & { status: StageState["status"] },
   ) => {
+    // Once the deadline has fired, stop mutating/persisting state so the
+    // timeout failure recorded by the catch handler is not overwritten.
+    if (ac.signal.aborted) return;
     const stage = state.stages.find((s) => s.name === name)!;
     Object.assign(stage, patch);
     if (patch.status === "running") stage.startedAt = new Date().toISOString();
@@ -66,7 +73,18 @@ export async function runPipeline(opts: {
   let analysis: Analysis | undefined;
   let bootedKill: (() => Promise<void>) | undefined;
 
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timeoutHandle = setTimeout(() => {
+      ac.abort();
+      // Tear down a booted app if the run is killed after it came up.
+      if (bootedKill) void bootedKill().catch(() => {});
+      reject(new Error(`run exceeded MAX_RUN_SECONDS=${config.MAX_RUN_SECONDS}s`));
+    }, config.MAX_RUN_SECONDS * 1000);
+  });
+
   try {
+    const work = (async (): Promise<RunState> => {
     // 1. Clone
     await setStage("clone", { status: "running", message: "git clone" });
     const repoDir = join(dir, "repo");
@@ -77,6 +95,7 @@ export async function runPipeline(opts: {
       destDir: repoDir,
       maxRepoMb: config.MAX_REPO_MB,
       log: (l) => void bus.log(runId, l),
+      signal: ac.signal,
     });
     await setStage("clone", { status: "done", message: `cloned ${sizeBytes} bytes` });
 
@@ -139,6 +158,14 @@ export async function runPipeline(opts: {
       } catch (e) {
         degraded = true;
         await setStage("boot", { status: "degraded", message: (e as Error).message });
+      }
+      // If the deadline fired while booting, tear down immediately and abort —
+      // the timeout handler ran before bootedKill was assigned. (Outside the
+      // try/catch so the abort isn't swallowed as a "degraded" boot.)
+      if (ac.signal.aborted) {
+        if (bootedKill) await bootedKill().catch(() => {});
+        bootedKill = undefined;
+        throw new Error(`run exceeded MAX_RUN_SECONDS=${config.MAX_RUN_SECONDS}s`);
       }
     }
 
@@ -221,8 +248,10 @@ export async function runPipeline(opts: {
     const deckPdfPath = join(dir, "deck.pdf");
     await renderMarkdown(renderInput, reportMdPath);
     await renderDeck(renderInput, deckHtmlPath);
+    let pdfOk = false;
     try {
       await renderPdfFromDeck(deckHtmlPath, deckPdfPath);
+      pdfOk = true;
     } catch (e) {
       degraded = true;
       await bus.log(runId, `[render] PDF failed: ${(e as Error).message}`, "warn");
@@ -230,18 +259,24 @@ export async function runPipeline(opts: {
     state.artifacts = {
       reportMd: "report.md",
       deckHtml: "deck.html",
-      deckPdf: "deck.pdf",
+      // Only advertise the PDF when it was actually written, otherwise the UI
+      // links to a 404 / zero-byte file.
+      ...(pdfOk ? { deckPdf: "deck.pdf" } : {}),
       caseStudyJson: "case-study.json",
       qualityJson: "quality.json",
     };
-    await setStage("render", { status: "done", message: "rendered" });
+    await setStage("render", { status: "done", message: pdfOk ? "rendered" : "rendered (no pdf)" });
 
-    // Done
+    // Done. If the deadline fired while we were finishing, leave the timeout
+    // failure recorded by the catch handler untouched.
+    if (ac.signal.aborted) return state;
     state.state = degraded ? "partial" : "done";
     state.updatedAt = new Date().toISOString();
     await store.write(runId, state);
     await bus.publish(runId, { type: "done", state: state.state, artifacts: state.artifacts });
     return state;
+    })();
+    return await Promise.race([work, deadline]);
   } catch (err) {
     const msg = (err as Error).message;
     const runningStage = state.stages.find((s) => s.status === "running");
@@ -259,6 +294,7 @@ export async function runPipeline(opts: {
     await bus.publish(runId, { type: "error", error: msg });
     throw err;
   } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
     if (bootedKill) await bootedKill().catch(() => {});
   }
 }
@@ -268,7 +304,7 @@ function buildInitialState(runId: string, spec: RunSpec): RunState {
   const now = new Date().toISOString();
   return {
     runId,
-    spec,
+    spec: redactSpec(spec),
     state: "queued",
     createdAt: now,
     updatedAt: now,
@@ -278,7 +314,12 @@ function buildInitialState(runId: string, spec: RunSpec): RunState {
 
 function parseRepoUrl(url: string): { owner: string; name: string } {
   const gh = url.match(/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/);
-  if (gh) return { owner: gh[1] ?? "", name: gh[2] ?? "" };
+  if (gh) {
+    const owner = gh[1] ?? "";
+    const name = gh[2] ?? "";
+    if (!owner || !name) throw new Error(`invalid GitHub URL (empty owner/name): ${url}`);
+    return { owner, name };
+  }
   // file:// or local path: derive a synthetic owner/name from the basename.
   const file = url.match(/^(?:file:\/\/)?(.+)$/);
   if (file) {
