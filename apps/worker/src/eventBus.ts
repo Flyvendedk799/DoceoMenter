@@ -9,6 +9,9 @@ export class RunEventBus {
   private readonly emitter = new EventEmitter();
   private subRedis: IORedis | undefined;
   private readonly subscribed = new Set<string>();
+  // Number of live local listeners per run, so the Redis channel can be
+  // unsubscribed once the last SSE client for a run disconnects.
+  private readonly refCounts = new Map<string, number>();
 
   constructor(
     private readonly store: RunStore,
@@ -51,11 +54,27 @@ export class RunEventBus {
   subscribe(runId: string, listener: (event: RunEvent) => void): () => void {
     const handler = (e: RunEvent) => listener(e);
     this.emitter.on(runId, handler);
+    this.refCounts.set(runId, (this.refCounts.get(runId) ?? 0) + 1);
     void this.ensureSubscribed(runId).catch(() => {
       // Redis pub/sub is optional; callers will still receive local events and
       // reconnecting clients receive the persisted snapshot from RunStore.
     });
-    return () => this.emitter.off(runId, handler);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.emitter.off(runId, handler);
+      const next = (this.refCounts.get(runId) ?? 1) - 1;
+      if (next <= 0) {
+        this.refCounts.delete(runId);
+        this.subscribed.delete(runId);
+        // Release the Redis channel so subscriptions don't grow unbounded as
+        // SSE clients connect/disconnect over the process lifetime.
+        if (this.subRedis) void this.subRedis.unsubscribe(this.channelOf(runId)).catch(() => {});
+      } else {
+        this.refCounts.set(runId, next);
+      }
+    };
   }
 
   async publish(runId: string, event: RunEvent): Promise<void> {

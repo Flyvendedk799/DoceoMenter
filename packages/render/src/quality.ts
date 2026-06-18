@@ -130,7 +130,13 @@ function unsupportedOutcomeCheck(input: RenderInput): Check {
     input.content.caseBrief.productNarrative,
     ...input.content.caseBrief.evidence.map((entry) => entry.claim),
   ].join(" ");
-  const suspicious = /\b(\+?\d+%|revenue|conversion|growth|users?|customers?|faster|performance|adoption)\b/i.test(text);
+  // Only flag *quantified* or explicitly comparative outcome claims. Bare nouns
+  // like "users" or "performance" appear descriptively in legitimate briefs and
+  // must not trip the gate.
+  const suspicious =
+    /(\+?\d+(\.\d+)?\s*%)|(\b\d+(\.\d+)?x\b)|\b(increased|decreased|reduced|doubled|tripled|quadrupled|boosted|grew|skyrocketed|outperform(?:s|ed)?|\d+\s+(?:users|customers|downloads|stars))\b/i.test(
+      text,
+    );
   if (!suspicious) {
     return {
       id: "no-invented-outcomes",

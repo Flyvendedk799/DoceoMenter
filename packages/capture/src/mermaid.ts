@@ -12,18 +12,26 @@ export async function renderMermaidToPng(
   outPath: string,
 ): Promise<{ width: number; height: number }> {
   const ctx = await handle.newContext({ blockNetwork: "all" });
-  const page = await ctx.newPage();
-  await page.goto("file://" + assetsHtmlPath, { waitUntil: "domcontentloaded" });
-  await page.waitForFunction(() => typeof (window as any).__renderMermaid === "function", null, {
-    timeout: 5_000,
-  });
-  await page.evaluate(async (s: string) => {
-    await (window as any).__renderMermaid(s);
-  }, spec);
-  await page.waitForSelector("#diagram svg", { timeout: 5_000 });
-  const el = page.locator("#wrap");
-  await el.screenshot({ path: outPath, type: "png", omitBackground: false });
-  const box = await el.boundingBox();
-  await ctx.close();
-  return { width: Math.round(box?.width ?? 0), height: Math.round(box?.height ?? 0) };
+  try {
+    const page = await ctx.newPage();
+    await page.goto("file://" + assetsHtmlPath, { waitUntil: "domcontentloaded" });
+    await page.waitForFunction(() => typeof (window as any).__renderMermaid === "function", null, {
+      timeout: 5_000,
+    });
+    await page.evaluate(async (s: string) => {
+      await (window as any).__renderMermaid(s);
+    }, spec);
+    await page.waitForSelector("#diagram svg", { timeout: 5_000 });
+    const el = page.locator("#wrap");
+    const box = await el.boundingBox();
+    const width = Math.round(box?.width ?? 0);
+    const height = Math.round(box?.height ?? 0);
+    if (width === 0 || height === 0) {
+      throw new Error("mermaid diagram rendered with zero dimensions");
+    }
+    await el.screenshot({ path: outPath, type: "png", omitBackground: false });
+    return { width, height };
+  } finally {
+    await ctx.close().catch(() => {});
+  }
 }

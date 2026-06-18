@@ -5,8 +5,15 @@ import { join } from "node:path";
 import { readFileSync } from "node:fs";
 import { renderMarkdown } from "./markdown.js";
 import { renderCaseStudyExport } from "./case-study.js";
-import { renderQualityReport } from "./quality.js";
+import { renderQualityReport, buildQualityReport } from "./quality.js";
 import type { RenderInput } from "./types.js";
+
+async function renderToString(input: RenderInput): Promise<string> {
+  const dir = mkdtempSync(join(tmpdir(), "doceomenter-md-"));
+  const out = join(dir, "report.md");
+  await renderMarkdown(input, out);
+  return readFileSync(out, "utf-8");
+}
 
 const baseInput: RenderInput = {
   runId: "abc123",
@@ -124,5 +131,76 @@ describe("renderMarkdown", () => {
     expect(payload.portfolio.media[0]?.path).toBe("assets/screenshots/live-home.png");
     expect(readFileSync(qualityPath, "utf-8")).toMatch(/No unsupported outcomes/);
     expect(readFileSync(caseStudyPath, "utf-8")).toMatch(/doceomenter.case-study.v1/);
+  });
+});
+
+describe("renderMarkdown — injection hardening", () => {
+  it("neutralises pipes, newlines, and backticks in table cells", async () => {
+    const input = structuredClone(baseInput);
+    input.content.caseBrief.evidence[0]!.claim = "pipe | here\nand `code` span okay";
+    const md = await renderToString(input);
+    // The evidence table header has exactly one following pipe-delimited row per
+    // claim — a raw newline/pipe/backtick would corrupt that. Find the rendered
+    // row and assert it is a single line with neutralised characters.
+    const row = md.split("\n").find((l) => l.includes("pipe"));
+    expect(row).toBeDefined();
+    expect(row).toContain("pipe \\| here and 'code' span okay");
+    expect(row).not.toContain("\n");
+  });
+
+  it("widens the code fence when content contains a triple-backtick", async () => {
+    const input = structuredClone(baseInput);
+    input.content.technical.gettingStarted = ["```", "echo escaped"];
+    const md = await renderToString(input);
+    // A 3-backtick fence would let the content close the block early; the
+    // renderer must use a 4-backtick fence instead.
+    expect(md).toContain("````bash");
+    expect(md).toContain("echo escaped");
+  });
+
+  it("skips ok entries that have no renderable media", async () => {
+    const input = structuredClone(baseInput);
+    input.capture.entries.push({
+      shotId: "ghost",
+      shot: {
+        id: "ghost",
+        kind: "screenshot",
+        target: "github-readme",
+        caption: "x",
+        importance: 2,
+      },
+      status: "ok",
+    });
+    const md = await renderToString(input);
+    expect(md).not.toContain("(no asset)");
+    // 1 of 2 entries is renderable → the partial-capture note is emitted.
+    expect(md).toContain("Partial capture: 1 of 2");
+  });
+});
+
+describe("buildQualityReport — outcome detection", () => {
+  function outcomeStatus(mutate: (i: RenderInput) => void): string {
+    const input = structuredClone(baseInput);
+    mutate(input);
+    const report = buildQualityReport(input);
+    return report.checks.find((c) => c.id === "no-invented-outcomes")!.status;
+  }
+
+  it("does not flag benign descriptive language", () => {
+    expect(
+      outcomeStatus((i) => {
+        i.content.caseBrief.problem =
+          "Users need a way to understand a repository's performance-sensitive code paths quickly.";
+      }),
+    ).toBe("pass");
+  });
+
+  it("flags a quantified outcome claim with no supporting evidence", () => {
+    expect(
+      outcomeStatus((i) => {
+        i.content.caseBrief.productNarrative =
+          "Adopting this tool increased conversions by 40% across the funnel within one quarter of launch.";
+      }),
+    ).toBe("fail");
   });
 });

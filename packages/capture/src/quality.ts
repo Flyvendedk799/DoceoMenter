@@ -12,7 +12,9 @@ const MAX_UNIFORMITY = 0.985;
 export async function evaluateImageQuality(pngPath: string): Promise<QualityResult> {
   const img = sharp(pngPath);
   const meta = await img.metadata();
-  const stats = await img.stats();
+  // Drop the alpha channel before computing channel stats — a fully-opaque alpha
+  // (mean 255) would otherwise skew meanLum and make it meaningless.
+  const stats = await img.clone().removeAlpha().stats();
   const { data, info } = await img
     .clone()
     .greyscale()

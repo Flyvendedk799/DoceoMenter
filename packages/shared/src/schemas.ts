@@ -1,5 +1,16 @@
 import { z } from "zod";
 
+/** A git ref (branch, tag, or commit SHA) safe to pass as an argv operand. */
+export const GitRefSchema = z
+  .string()
+  .min(1)
+  .max(120)
+  .regex(
+    /^[A-Za-z0-9._/-]+$/,
+    "ref may only contain letters, numbers, '.', '_', '/' and '-'",
+  )
+  .refine((s) => !s.startsWith("-") && !s.includes(".."), "invalid ref");
+
 export const RunSpecSchema = z.object({
   url: z
     .string()
@@ -8,7 +19,7 @@ export const RunSpecSchema = z.object({
       (s) => /^https?:\/\/github\.com\/[^/]+\/[^/]+(?:\.git)?\/?$/.test(s),
       "URL must be of the form https://github.com/<owner>/<repo>",
     ),
-  ref: z.string().min(1).max(120).optional(),
+  ref: GitRefSchema.optional(),
   outputStyle: z.enum(["concise", "standard", "deep"]).optional(),
   includeVideo: z.boolean().optional(),
   bootApp: z.boolean().optional(),
@@ -27,6 +38,28 @@ export type ResolvedRunSpec = Required<
   Pick<RunSpec, "ref" | "outputStyle" | "includeVideo" | "bootApp">
 > &
   Pick<RunSpec, "url" | "apiKey">;
+
+/**
+ * A run id is exactly the 12 lowercase-hex chars produced by
+ * `randomBytes(6).toString("hex")`. Validate before any value reaches the
+ * filesystem so a crafted id (`../`, absolute path) can never escape the data
+ * root.
+ */
+export const RUN_ID_RE = /^[0-9a-f]{12}$/;
+export function isValidRunId(id: string): boolean {
+  return RUN_ID_RE.test(id);
+}
+
+/**
+ * Strip the BYOK Anthropic key from a spec before it is persisted to disk or
+ * returned to a client. The worker reads the live key from the in-memory job
+ * payload, never from persisted run state.
+ */
+export function redactSpec(spec: RunSpec): RunSpec {
+  if (spec.apiKey === undefined) return spec;
+  const { apiKey: _omit, ...rest } = spec;
+  return rest;
+}
 
 export function resolveRunSpec(spec: RunSpec): ResolvedRunSpec {
   return {
@@ -54,9 +87,20 @@ const ViewportSchema = z.object({
   h: z.number().int().min(240).max(2160),
 });
 
+/**
+ * Shot ids become on-disk filenames and are interpolated into HTML/Markdown
+ * asset references, so they must be restricted to a path- and markup-safe
+ * charset (no quotes, slashes, angle brackets, whitespace).
+ */
+export const ShotIdSchema = z
+  .string()
+  .min(1)
+  .max(64)
+  .regex(/^[A-Za-z0-9._-]+$/, "shot id must match [A-Za-z0-9._-]");
+
 export const ShotSchema = z.union([
   z.object({
-    id: z.string(),
+    id: ShotIdSchema,
     kind: z.literal("screenshot"),
     target: z.literal("live-app"),
     route: z.string(),
@@ -68,7 +112,7 @@ export const ShotSchema = z.union([
     importance: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   }),
   z.object({
-    id: z.string(),
+    id: ShotIdSchema,
     kind: z.literal("screenshot"),
     target: z.literal("github-readme"),
     section: z.string().optional(),
@@ -76,7 +120,7 @@ export const ShotSchema = z.union([
     importance: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   }),
   z.object({
-    id: z.string(),
+    id: ShotIdSchema,
     kind: z.literal("screenshot"),
     target: z.literal("code-architecture"),
     diagramSpec: z.object({
@@ -86,7 +130,7 @@ export const ShotSchema = z.union([
     importance: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   }),
   z.object({
-    id: z.string(),
+    id: ShotIdSchema,
     kind: z.literal("video"),
     target: z.literal("live-app"),
     route: z.string(),

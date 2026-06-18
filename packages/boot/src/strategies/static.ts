@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { createReadStream, statSync } from "node:fs";
-import { extname, join, normalize, resolve } from "node:path";
+import { extname, join, normalize, resolve, sep } from "node:path";
 import type { Logger, BootedApp } from "./common.js";
 
 const MIME: Record<string, string> = {
@@ -31,7 +31,7 @@ export async function bootStatic(
   const server = createServer((req, res) => {
     const urlPath = decodeURIComponent((req.url ?? "/").split("?")[0]!);
     let target = normalize(join(root, urlPath));
-    if (!target.startsWith(root)) {
+    if (target !== root && !target.startsWith(root + sep)) {
       res.statusCode = 403;
       res.end("forbidden");
       return;

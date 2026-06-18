@@ -55,7 +55,14 @@ export async function bootNodeLike(
   const env: NodeJS.ProcessEnv = { PORT: String(port), HOST: "127.0.0.1" };
   const child = spawnDev({ cwd: repoDir, cmd, args, env, log });
   const url = `http://127.0.0.1:${port}`;
-  await pollUntilReady(url, 60_000, log);
+  try {
+    await pollUntilReady(url, 60_000, log);
+  } catch (e) {
+    // The server never became ready — kill the orphaned child before the error
+    // propagates, otherwise it leaks (and holds its port) for the worker's life.
+    await killProcess(child);
+    throw e;
+  }
   return {
     url,
     kill: async () => killProcess(child),

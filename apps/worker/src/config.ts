@@ -9,7 +9,7 @@ const envSchema = z.object({
     .default("false")
     .transform((s) => s === "true"),
   ANTHROPIC_API_KEY: z.string().optional(),
-  ANTHROPIC_MODEL_PRIMARY: z.string().default("claude-opus-4-7"),
+  ANTHROPIC_MODEL_PRIMARY: z.string().default("claude-opus-4-8"),
   ANTHROPIC_MODEL_FALLBACK: z.string().default("claude-sonnet-4-6"),
   MAX_REPO_MB: z.coerce.number().default(500),
   MAX_RUN_SECONDS: z.coerce.number().default(600),

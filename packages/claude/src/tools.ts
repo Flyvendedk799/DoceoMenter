@@ -2,6 +2,19 @@ import type Anthropic from "@anthropic-ai/sdk";
 
 type Tool = NonNullable<Anthropic.Messages.MessageCreateParams["tools"]>[number];
 
+// Mirror the zod bounds in `@doceomenter/shared` so the model is constrained
+// up-front and far fewer responses fail post-hoc validation.
+const idSchema = { type: "string", pattern: "^[A-Za-z0-9._-]+$", maxLength: 64 } as const;
+const viewportSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["w", "h"],
+  properties: {
+    w: { type: "integer", minimum: 320, maximum: 3840 },
+    h: { type: "integer", minimum: 240, maximum: 2160 },
+  },
+} as const;
+
 const conceptTool: Tool = {
   name: "submit_concept",
   description:
@@ -72,15 +85,11 @@ const shotSchema = {
       additionalProperties: false,
       required: ["id", "kind", "target", "route", "caption", "importance"],
       properties: {
-        id: { type: "string" },
+        id: idSchema,
         kind: { const: "screenshot" },
         target: { const: "live-app" },
         route: { type: "string" },
-        viewport: {
-          type: "object",
-          properties: { w: { type: "integer" }, h: { type: "integer" } },
-          required: ["w", "h"],
-        },
+        viewport: viewportSchema,
         waitFor: { type: "string" },
         interactions: { type: "array", items: interactionSchema },
         fullPage: { type: "boolean" },
@@ -93,7 +102,7 @@ const shotSchema = {
       additionalProperties: false,
       required: ["id", "kind", "target", "caption", "importance"],
       properties: {
-        id: { type: "string" },
+        id: idSchema,
         kind: { const: "screenshot" },
         target: { const: "github-readme" },
         section: { type: "string" },
@@ -106,13 +115,13 @@ const shotSchema = {
       additionalProperties: false,
       required: ["id", "kind", "target", "diagramSpec", "caption", "importance"],
       properties: {
-        id: { type: "string" },
+        id: idSchema,
         kind: { const: "screenshot" },
         target: { const: "code-architecture" },
         diagramSpec: {
           type: "object",
           required: ["mermaid"],
-          properties: { mermaid: { type: "string" } },
+          properties: { mermaid: { type: "string", minLength: 10 } },
         },
         caption: { type: "string" },
         importance: { type: "integer", enum: [1, 2, 3] },
@@ -123,7 +132,7 @@ const shotSchema = {
       additionalProperties: false,
       required: ["id", "kind", "target", "route", "script", "caption"],
       properties: {
-        id: { type: "string" },
+        id: idSchema,
         kind: { const: "video" },
         target: { const: "live-app" },
         route: { type: "string" },
@@ -208,7 +217,7 @@ const captionsTool: Tool = {
           required: ["shotId", "markdown"],
           properties: {
             shotId: { type: "string" },
-            markdown: { type: "string", maxLength: 500 },
+            markdown: { type: "string", minLength: 5, maxLength: 500 },
           },
         },
       },
@@ -323,7 +332,7 @@ const summaryTool: Tool = {
     additionalProperties: false,
     required: ["oneLiner", "tldr"],
     properties: {
-      oneLiner: { type: "string", maxLength: 140 },
+      oneLiner: { type: "string", minLength: 3, maxLength: 140 },
       tldr: { type: "array", minItems: 3, maxItems: 3, items: { type: "string" } },
     },
   },

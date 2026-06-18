@@ -1,8 +1,9 @@
-import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, basename, join, resolve, extname } from "node:path";
+import { readFile, writeFile } from "node:fs/promises";
+import { dirname, join, resolve, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CaptureManifestEntry } from "@doceomenter/shared";
 import type { RenderInput } from "./types.js";
+import { assetRef, hasRenderableMedia } from "./assets.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const ASSETS = resolve(here, "..", "assets");
@@ -178,8 +179,8 @@ function buildSlides(input: RenderInput): string {
     <ul>${concept.audience.map((a) => `<li>${escapeHtml(a)}</li>`).join("")}</ul>
   </section>`);
 
-  // Capture slides — one per successful entry
-  const successful = capture.entries.filter((e) => e.status === "ok");
+  // Capture slides — one per successful entry that has renderable media.
+  const successful = capture.entries.filter((e) => e.status === "ok" && hasRenderableMedia(e));
   for (const e of successful) {
     const captionMd = captions.find((c) => c.shotId === e.shotId)?.markdown ??
       ("caption" in e.shot ? e.shot.caption : "");
@@ -234,22 +235,22 @@ function embedAsset(e: CaptureManifestEntry, captionMd: string, base: string): s
   const captionBlock = captionMd ? `<p class="caption">${escapeHtml(captionMd)}</p>` : "";
   if (e.outputs.webpPath || e.outputs.pngPath) {
     const path = e.outputs.webpPath ?? e.outputs.pngPath!;
-    return `<img src="${base}/${lastTwo(path)}" alt="${escapeHtml(captionMd || "capture")}" />${captionBlock}`;
+    const src = escapeHtml(assetRef(base, path, "screenshots"));
+    return `<img src="${src}" alt="${escapeHtml(captionMd || "capture")}" />${captionBlock}`;
   }
   if (e.outputs.mp4Path || e.outputs.webmPath) {
     const v = e.outputs.mp4Path ?? e.outputs.webmPath!;
     const ext = extname(v).slice(1);
     const mime = ext === "mp4" ? "video/mp4" : "video/webm";
-    const poster = e.outputs.posterPath ? ` poster="${base}/${lastTwo(e.outputs.posterPath)}"` : "";
+    const poster = e.outputs.posterPath
+      ? ` poster="${escapeHtml(assetRef(base, e.outputs.posterPath, "videos"))}"`
+      : "";
+    const src = escapeHtml(assetRef(base, v, "videos"));
     return `<video controls preload="metadata"${poster}>
-      <source src="${base}/${lastTwo(v)}" type="${mime}" />
+      <source src="${src}" type="${mime}" />
     </video>${captionBlock}`;
   }
   return `<p>(no asset)</p>`;
-}
-
-function lastTwo(p: string): string {
-  return p.split(/[/\\]/).slice(-2).join("/");
 }
 
 function escapeHtml(s: string): string {

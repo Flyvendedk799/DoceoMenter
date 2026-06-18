@@ -25,6 +25,26 @@ describe("detectStrategy", () => {
     expect(detectStrategy(a).kind).toBe("next");
   });
 
+  it("detects Next.js with the src/ layout", () => {
+    const a = mk({
+      manifests: { nodePkg: { name: "x", scripts: {}, deps: ["next"], devDeps: [] } },
+      fileIndex: [{ path: "src/app/page.tsx", bytes: 1 }],
+    });
+    expect(detectStrategy(a).kind).toBe("next");
+  });
+
+  it("emits a Flask --app command pointing at a discovered entry module", () => {
+    const a = mk({
+      manifests: { pythonRequirements: ["flask"] },
+      fileIndex: [{ path: "server/wsgi.py", bytes: 1 }],
+    });
+    const s = detectStrategy(a);
+    expect(s.kind).toBe("python-web");
+    if (s.kind === "python-web") {
+      expect(s.cmd).toContain("--app server.wsgi");
+    }
+  });
+
   it("detects Vite", () => {
     const a = mk({
       manifests: { nodePkg: { name: "x", scripts: { dev: "vite" }, deps: [], devDeps: ["vite"] } },

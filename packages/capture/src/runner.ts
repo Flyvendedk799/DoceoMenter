@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename } from "node:fs/promises";
+import { mkdir, readFile, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import type {
@@ -125,10 +125,14 @@ async function captureLiveAppScreenshot(
       await page.goto(fullUrl, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
     });
     if (shot.waitFor) {
-      await page.waitForSelector(shot.waitFor, { timeout: 5_000 });
+      // Best-effort: a wrong waitFor selector should not fail an otherwise-good
+      // screenshot.
+      await page.waitForSelector(shot.waitFor, { timeout: 5_000 }).catch(() => {
+        ctx.log(`[capture] ${shot.id} waitFor "${shot.waitFor}" not found — continuing`);
+      });
     }
     if (shot.interactions) {
-      await runInteractions(page, shot.interactions);
+      await runInteractions(page, shot.interactions, 0, ctx.log);
     }
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.waitForTimeout(120);
@@ -184,21 +188,30 @@ async function captureLiveAppVideo(
   await page.setViewportSize({ width: 1280, height: 720 });
   const url = new URL(shot.route, liveAppUrl).toString();
   const startedAt = Date.now();
-  await page.goto(url, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
-  await runInteractions(page, shot.script, 250);
-  const elapsed = Date.now() - startedAt;
-  if (elapsed < shot.maxDurationMs) {
-    await page.waitForTimeout(Math.min(2000, shot.maxDurationMs - elapsed));
-  }
   const video = page.video();
-  await ctxBrowser.close();
-  let webmPath = video ? await video.path() : undefined;
-  if (webmPath) {
-    const renamed = join(videoDir, `${shot.id}.webm`);
-    await rename(webmPath, renamed).catch(() => {});
-    webmPath = renamed;
+  try {
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
+    await runInteractions(page, shot.script, 250, ctx.log);
+    const elapsed = Date.now() - startedAt;
+    if (elapsed < shot.maxDurationMs) {
+      await page.waitForTimeout(Math.min(2000, shot.maxDurationMs - elapsed));
+    }
+  } finally {
+    // Closing the context finalizes the recording; always do it, even on error.
+    await ctxBrowser.close().catch(() => {});
   }
-  if (!webmPath) {
+  const webmPath = join(videoDir, `${shot.id}.webm`);
+  if (video) {
+    // saveAs() waits for the recording to flush — far more robust than racing a
+    // rename against an unflushed temp file.
+    await video.saveAs(webmPath).catch(() => {});
+    await video.delete().catch(() => {});
+  }
+  let webmSize = 0;
+  try {
+    webmSize = (await stat(webmPath)).size;
+  } catch {}
+  if (!video || webmSize === 0) {
     return { shotId: shot.id, shot, status: "failed", failureReason: "no video produced" };
   }
   const outputs: NonNullable<CaptureManifestEntry["outputs"]> = { webmPath, durationMs: Date.now() - startedAt };
@@ -287,23 +300,33 @@ async function captureMermaid(
   }
 }
 
+const INTERACTION_TIMEOUT_MS = 4_000;
+
 async function runInteractions(
   page: import("playwright").Page,
   interactions: Interaction[],
   defaultDelayMs = 0,
+  log?: (line: string) => void,
 ): Promise<void> {
+  const opts = { timeout: INTERACTION_TIMEOUT_MS };
   for (const i of interactions) {
     if (defaultDelayMs > 0) await page.waitForTimeout(defaultDelayMs);
-    if (i.do === "click") await page.locator(i.selector).first().click({ trial: false });
-    else if (i.do === "fill") await page.locator(i.selector).first().fill(i.text);
-    else if (i.do === "hover") await page.locator(i.selector).first().hover();
-    else if (i.do === "scrollTo")
-      await page.evaluate((sel: string) => {
-        const el = document.querySelector(sel);
-        if (el) el.scrollIntoView({ block: "center" });
-      }, i.selector);
-    else if (i.do === "wait") await page.waitForTimeout(i.ms);
-    else if (i.do === "press") await page.keyboard.press(i.key);
+    // Interactions are best-effort: a stale/missing selector from the generated
+    // plan must not abort the whole shot (or, for video, leak its context).
+    try {
+      if (i.do === "click") await page.locator(i.selector).first().click({ trial: false, ...opts });
+      else if (i.do === "fill") await page.locator(i.selector).first().fill(i.text, opts);
+      else if (i.do === "hover") await page.locator(i.selector).first().hover(opts);
+      else if (i.do === "scrollTo")
+        await page.evaluate((sel: string) => {
+          const el = document.querySelector(sel);
+          if (el) el.scrollIntoView({ block: "center" });
+        }, i.selector);
+      else if (i.do === "wait") await page.waitForTimeout(i.ms);
+      else if (i.do === "press") await page.keyboard.press(i.key);
+    } catch (e) {
+      log?.(`[capture] interaction ${i.do} skipped: ${(e as Error).message.split("\n")[0]}`);
+    }
   }
 }
 

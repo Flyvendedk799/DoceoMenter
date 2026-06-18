@@ -25,6 +25,11 @@ export async function bootPythonWeb(
   const [first, ...rest] = cmd.split(" ");
   const child = spawnDev({ cwd: repoDir, cmd: first ?? "python", args: rest, log });
   const url = `http://127.0.0.1:${port}`;
-  await pollUntilReady(url, 60_000, log);
+  try {
+    await pollUntilReady(url, 60_000, log);
+  } catch (e) {
+    await killProcess(child);
+    throw e;
+  }
   return { url, kill: async () => killProcess(child) };
 }
