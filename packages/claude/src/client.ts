@@ -25,6 +25,7 @@ export type ClaudeClientOptions = {
   modelPrimary?: string;
   modelFallback?: string;
   modelCheap?: string;
+  provider?: "claude" | "openai";
   /** When true, return deterministic fixture outputs without calling the API. */
   fixtureMode?: boolean;
   logger?: (line: string) => void;
@@ -60,14 +61,20 @@ const TOKEN_BUDGET = {
 
 export function createClaudeClient(opts: ClaudeClientOptions = {}): ClaudeClient {
   const log = opts.logger ?? (() => {});
-  const fixture = opts.fixtureMode || (!opts.apiKey && !process.env.ANTHROPIC_API_KEY);
+  const provider = opts.provider ?? "claude";
+  const envKey = provider === "openai" ? process.env.OPENAI_API_KEY : process.env.ANTHROPIC_API_KEY;
+  const fixture = opts.fixtureMode || (!opts.apiKey && !envKey);
   if (fixture) {
-    log("[claude] fixture mode (no API key) — deterministic outputs");
+    log(`[${provider}] fixture mode (no API key) — deterministic outputs`);
     return createFixtureClient();
   }
 
+  if (provider === "openai") {
+    return createOpenAIClient({ ...opts, apiKey: opts.apiKey ?? envKey, logger: log });
+  }
+
   const anthropic = new Anthropic({
-    apiKey: opts.apiKey ?? process.env.ANTHROPIC_API_KEY!,
+    apiKey: opts.apiKey ?? envKey!,
   });
   const modelPrimary = opts.modelPrimary ?? process.env.ANTHROPIC_MODEL_PRIMARY ?? "claude-opus-4-8";
   const modelFallback =
@@ -279,6 +286,178 @@ export function createClaudeClient(opts: ClaudeClientOptions = {}): ClaudeClient
       const captions = captionsParsed.success ? captionsParsed.data.captions : [];
       const summary = parseOrThrow("submit_summary", SummarySchema, uses.get("submit_summary"));
       return { technical, caseBrief, captions, summary };
+    },
+  };
+}
+
+type OpenAIChatMessage = {
+  role: "system" | "user" | "assistant" | "tool";
+  content?: string | null;
+  tool_calls?: Array<{ id: string; type: "function"; function: { name: string; arguments: string } }>;
+  tool_call_id?: string;
+};
+
+type OpenAITool = {
+  type: "function";
+  function: { name: string; description?: string; parameters: unknown };
+};
+
+function createOpenAIClient(opts: ClaudeClientOptions & { apiKey?: string }): ClaudeClient {
+  const log = opts.logger ?? (() => {});
+  const apiKey = opts.apiKey ?? process.env.OPENAI_API_KEY!;
+  const modelPrimary = opts.modelPrimary ?? process.env.OPENAI_MODEL_PRIMARY ?? "gpt-5.5";
+  const modelFallback = opts.modelFallback ?? process.env.OPENAI_MODEL_FALLBACK ?? "gpt-5.4";
+  const RETRYABLE = new Set([429, 500, 502, 503, 529]);
+
+  function toOpenAITool(tool: Anthropic.Messages.Tool): OpenAITool {
+    return {
+      type: "function",
+      function: {
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.input_schema,
+      },
+    };
+  }
+
+  async function call(
+    systemBlocks: Anthropic.Messages.TextBlockParam[],
+    messages: OpenAIChatMessage[],
+    tools: OpenAITool[],
+    maxTokens: number,
+  ): Promise<OpenAIChatMessage> {
+    const system = systemBlocks.map((b) => b.text).join("\n\n");
+    const tryOnce = async (model: string) => {
+      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${apiKey}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          max_completion_tokens: maxTokens,
+          messages: [{ role: "system", content: system }, ...messages],
+          tools,
+          tool_choice: "required",
+        }),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        const err = new Error(`[openai] HTTP ${res.status}: ${text.slice(0, 500)}`) as Error & { status?: number };
+        err.status = res.status;
+        throw err;
+      }
+      const json = (await res.json()) as { choices?: Array<{ message?: OpenAIChatMessage }> };
+      const msg = json.choices?.[0]?.message;
+      if (!msg) throw new Error("[openai] response did not include a message");
+      return msg;
+    };
+
+    try {
+      return await tryOnce(modelPrimary);
+    } catch (err: unknown) {
+      const e = err as { status?: number; message?: string };
+      if (e.status !== undefined && RETRYABLE.has(e.status)) {
+        log(`[openai] primary ${modelPrimary} failed (${e.status}); falling back to ${modelFallback}`);
+        return await tryOnce(modelFallback);
+      }
+      throw err;
+    }
+  }
+
+  function collectToolUses(message: OpenAIChatMessage): Map<string, unknown> {
+    const out = new Map<string, unknown>();
+    for (const toolCall of message.tool_calls ?? []) {
+      if (out.has(toolCall.function.name)) continue;
+      try {
+        out.set(toolCall.function.name, JSON.parse(toolCall.function.arguments || "{}"));
+      } catch {
+        out.set(toolCall.function.name, undefined);
+      }
+    }
+    return out;
+  }
+
+  function parseOrThrow<T>(name: string, schema: z.ZodSchema<T>, raw: unknown): T {
+    const result = schema.safeParse(raw);
+    if (!result.success) throw new Error(`[openai] tool ${name} returned invalid payload: ${result.error.message}`);
+    return result.data;
+  }
+
+  type ToolSpec = { name: string; schema: z.ZodSchema<unknown>; required: boolean };
+  async function gather(
+    systemBlocks: Anthropic.Messages.TextBlockParam[],
+    initialUser: string,
+    tools: Anthropic.Messages.Tool[],
+    maxTokens: number,
+    specs: ToolSpec[],
+  ): Promise<Map<string, unknown>> {
+    const messages: OpenAIChatMessage[] = [{ role: "user", content: initialUser }];
+    const collected = new Map<string, unknown>();
+    let lastIssue = "";
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const msg = await call(systemBlocks, messages, tools.map(toOpenAITool), maxTokens);
+      for (const [name, input] of collectToolUses(msg)) if (!collected.has(name)) collected.set(name, input);
+      const problems: string[] = [];
+      for (const spec of specs) {
+        if (!spec.required) continue;
+        const res = spec.schema.safeParse(collected.get(spec.name));
+        if (!collected.has(spec.name)) {
+          problems.push(`'${spec.name}' was not called`);
+        } else if (!res.success) {
+          collected.delete(spec.name);
+          problems.push(`'${spec.name}' was invalid`);
+        }
+      }
+      if (problems.length === 0) return collected;
+      lastIssue = problems.join("; ");
+      messages.push(msg);
+      for (const tc of msg.tool_calls ?? []) messages.push({ role: "tool", tool_call_id: tc.id, content: "received" });
+      messages.push({ role: "user", content: `Please fix the following and call the required tools again with valid arguments: ${lastIssue}.` });
+    }
+    throw new Error(`[openai] could not obtain valid tool outputs after 3 attempts: ${lastIssue}`);
+  }
+
+  return {
+    async draftConceptAndPlan(analysis, callOpts) {
+      const ctx = buildRepoContext(analysis);
+      const systemBlocks: Anthropic.Messages.TextBlockParam[] = [
+        { type: "text", text: SYSTEM_PROMPT },
+        { type: "text", text: ctx },
+      ];
+      const userText = `${USER_CONCEPT_PROMPT}\n\nincludeVideo: ${callOpts.includeVideo}\noutputStyle: ${callOpts.outputStyle}`;
+      const uses = await gather(systemBlocks, userText, [TOOL_DEFINITIONS.conceptTool, TOOL_DEFINITIONS.capturePlanTool], TOKEN_BUDGET.conceptOutput, [
+        { name: "submit_concept", schema: ConceptSchema, required: true },
+        { name: "submit_capture_plan", schema: CapturePlanSchema, required: true },
+      ]);
+      return {
+        concept: parseOrThrow("submit_concept", ConceptSchema, uses.get("submit_concept")),
+        capturePlan: parseOrThrow("submit_capture_plan", CapturePlanSchema, uses.get("submit_capture_plan")),
+      };
+    },
+    async draftTechnicalAndCaptions(analysis, concept, capturePlan, manifest) {
+      const ctx = buildRepoContext(analysis);
+      const systemBlocks: Anthropic.Messages.TextBlockParam[] = [
+        { type: "text", text: SYSTEM_PROMPT },
+        { type: "text", text: ctx },
+      ];
+      const captureManifestText = JSON.stringify({ plan: capturePlan, captured: manifest.entries.map((e) => ({ shotId: e.shotId, kind: e.shot.kind, target: "target" in e.shot ? e.shot.target : "n/a", status: e.status, failureReason: e.failureReason })) }, null, 2);
+      const userText = [USER_TECHNICAL_PROMPT, "", `<previous-concept>${JSON.stringify(concept, null, 2)}</previous-concept>`, `<capture-manifest>${captureManifestText}</capture-manifest>`].join("\n");
+      const captionsWrapper = z.object({ captions: z.array(CaptionSchema) });
+      const uses = await gather(systemBlocks, userText, [TOOL_DEFINITIONS.technicalTool, TOOL_DEFINITIONS.captionsTool, TOOL_DEFINITIONS.caseBriefTool, TOOL_DEFINITIONS.summaryTool], TOKEN_BUDGET.technicalOutput, [
+        { name: "submit_technical", schema: TechnicalSchema, required: true },
+        { name: "submit_case_brief", schema: CaseBriefSchema, required: true },
+        { name: "submit_summary", schema: SummarySchema, required: true },
+        { name: "submit_captions", schema: captionsWrapper, required: false },
+      ]);
+      const captionsParsed = captionsWrapper.safeParse(uses.get("submit_captions"));
+      return {
+        technical: parseOrThrow("submit_technical", TechnicalSchema, uses.get("submit_technical")),
+        caseBrief: parseOrThrow("submit_case_brief", CaseBriefSchema, uses.get("submit_case_brief")),
+        captions: captionsParsed.success ? captionsParsed.data.captions : [],
+        summary: parseOrThrow("submit_summary", SummarySchema, uses.get("submit_summary")),
+      };
     },
   };
 }

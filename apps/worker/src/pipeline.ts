@@ -116,13 +116,27 @@ export async function runPipeline(opts: {
       message: `${analysis.fileCount} files, ${Object.keys(analysis.languages).length} langs`,
     });
 
-    // 3. Claude — concept + plan
-    await setStage("draft-concept", { status: "running", message: "Claude concept + plan" });
-    const claude = createClaudeClient({
-      apiKey: spec.apiKey ?? config.ANTHROPIC_API_KEY,
+    // 3. AI provider — concept + plan
+    await setStage("draft-concept", {
+      status: "running",
+      message: `${resolved.provider === "openai" ? "OpenAI" : "Claude"} concept + plan`,
+    });
+    const ai = createClaudeClient({
+      provider: resolved.provider,
+      apiKey:
+        spec.apiKey ??
+        (resolved.provider === "openai" ? config.OPENAI_API_KEY : config.ANTHROPIC_API_KEY),
+      modelPrimary:
+        resolved.provider === "openai"
+          ? config.OPENAI_MODEL_PRIMARY
+          : config.ANTHROPIC_MODEL_PRIMARY,
+      modelFallback:
+        resolved.provider === "openai"
+          ? config.OPENAI_MODEL_FALLBACK
+          : config.ANTHROPIC_MODEL_FALLBACK,
       logger: (l) => void bus.log(runId, l),
     });
-    const { concept, capturePlan } = await claude.draftConceptAndPlan(analysis, {
+    const { concept, capturePlan } = await ai.draftConceptAndPlan(analysis, {
       includeVideo: resolved.includeVideo,
       outputStyle: resolved.outputStyle,
     });
@@ -193,9 +207,12 @@ export async function runPipeline(opts: {
       bootedKill = undefined;
     }
 
-    // 7. Claude — technical + captions + summary
-    await setStage("draft-technical", { status: "running", message: "Claude technical pass" });
-    const { technical, caseBrief, captions, summary } = await claude.draftTechnicalAndCaptions(
+    // 7. AI provider — technical + captions + summary
+    await setStage("draft-technical", {
+      status: "running",
+      message: `${resolved.provider === "openai" ? "OpenAI" : "Claude"} technical pass`,
+    });
+    const { technical, caseBrief, captions, summary } = await ai.draftTechnicalAndCaptions(
       analysis,
       concept,
       capturePlan,

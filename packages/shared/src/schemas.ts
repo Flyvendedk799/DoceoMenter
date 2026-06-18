@@ -11,6 +11,9 @@ export const GitRefSchema = z
   )
   .refine((s) => !s.startsWith("-") && !s.includes(".."), "invalid ref");
 
+export const AiProviderSchema = z.enum(["claude", "openai"]);
+export type AiProvider = z.infer<typeof AiProviderSchema>;
+
 export const RunSpecSchema = z.object({
   url: z
     .string()
@@ -23,6 +26,7 @@ export const RunSpecSchema = z.object({
   outputStyle: z.enum(["concise", "standard", "deep"]).optional(),
   includeVideo: z.boolean().optional(),
   bootApp: z.boolean().optional(),
+  provider: AiProviderSchema.optional(),
   apiKey: z.string().min(1).optional(),
 });
 export type RunSpec = z.infer<typeof RunSpecSchema>;
@@ -32,10 +36,11 @@ export const RUN_SPEC_DEFAULTS = {
   outputStyle: "standard" as const,
   includeVideo: true,
   bootApp: true,
+  provider: "claude" as const,
 };
 
 export type ResolvedRunSpec = Required<
-  Pick<RunSpec, "ref" | "outputStyle" | "includeVideo" | "bootApp">
+  Pick<RunSpec, "ref" | "outputStyle" | "includeVideo" | "bootApp" | "provider">
 > &
   Pick<RunSpec, "url" | "apiKey">;
 
@@ -51,7 +56,7 @@ export function isValidRunId(id: string): boolean {
 }
 
 /**
- * Strip the BYOK Anthropic key from a spec before it is persisted to disk or
+ * Strip the BYOK provider key from a spec before it is persisted to disk or
  * returned to a client. The worker reads the live key from the in-memory job
  * payload, never from persisted run state.
  */
@@ -68,6 +73,7 @@ export function resolveRunSpec(spec: RunSpec): ResolvedRunSpec {
     outputStyle: spec.outputStyle ?? RUN_SPEC_DEFAULTS.outputStyle,
     includeVideo: spec.includeVideo ?? RUN_SPEC_DEFAULTS.includeVideo,
     bootApp: spec.bootApp ?? RUN_SPEC_DEFAULTS.bootApp,
+    provider: spec.provider ?? RUN_SPEC_DEFAULTS.provider,
     apiKey: spec.apiKey,
   };
 }
