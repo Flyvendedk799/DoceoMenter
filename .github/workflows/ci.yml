@@ -37,9 +37,11 @@ jobs:
           pnpm --filter @doceomenter/worker build
       - name: Typecheck web
         run: pnpm --filter @doceomenter/web typecheck
+      # No PLAYWRIGHT_BROWSERS_PATH: a YAML `env:` value is not shell-expanded, so
+      # `~/.cache/ms-playwright` was passed through literally and Playwright created a
+      # directory actually named `~` inside packages/capture. Left unset, Playwright uses that
+      # same path resolved properly, and every step agrees on where the browsers are.
       - name: Unit + integration tests
-        env:
-          PLAYWRIGHT_BROWSERS_PATH: ~/.cache/ms-playwright
         run: |
           pnpm --filter @doceomenter/capture exec playwright install --with-deps chromium
           pnpm --filter @doceomenter/shared test
@@ -76,7 +78,6 @@ jobs:
         run: git config --global url."https://github.com/".insteadOf "git@github.com:"
       - run: pnpm install --frozen-lockfile=false
       - name: Install Playwright browsers
-        env: { PLAYWRIGHT_BROWSERS_PATH: ~/.cache/ms-playwright }
         run: pnpm --filter @doceomenter/capture exec playwright install --with-deps chromium
       - name: Build packages
         run: |
@@ -90,7 +91,6 @@ jobs:
           pnpm --filter @doceomenter/web build
       - name: Start stack
         env:
-          PLAYWRIGHT_BROWSERS_PATH: ~/.cache/ms-playwright
           REDIS_URL: redis://127.0.0.1:6379
           DATA_ROOT: /tmp/doceomenter-runs
           PORT: 3010
