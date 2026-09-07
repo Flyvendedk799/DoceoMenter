@@ -25,9 +25,12 @@ export type ProviderChoice = { provider: AiProvider; model?: string };
 export function ProviderPanel({
   value,
   onChange,
+  onSummary,
 }: {
   value: ProviderChoice;
   onChange: (choice: ProviderChoice) => void;
+  /** One line about the selected credential, for a collapsed parent to display. */
+  onSummary?: (summary: string) => void;
 }) {
   const [status, setStatus] = useState<AuthStatus | null>(null);
   const [error, setError] = useState<string | undefined>();
@@ -88,72 +91,80 @@ export function ProviderPanel({
 
   const selected = status?.providers.find((p) => p.id === value.provider);
 
+  // Report the selected credential upward so a collapsed disclosure can say what will be
+  // charged without opening. Kept in a ref: the parent passes a setState and re-renders on
+  // every keystroke, and this should follow the status, not the typing.
+  const summaryRef = useRef(onSummary);
+  summaryRef.current = onSummary;
+  useEffect(() => {
+    if (!summaryRef.current) return;
+    if (error) summaryRef.current("provider status unavailable");
+    else if (!status) summaryRef.current("checking credentials…");
+    else if (!selected) summaryRef.current("no provider selected");
+    else if (selected.ready) summaryRef.current(`${selected.label.toLowerCase()} · ${selected.source}`);
+    else summaryRef.current(`${selected.label.toLowerCase()} · not configured`);
+  }, [error, status, selected]);
+
   return (
-    <section className="rounded-md border border-emerald-200 bg-emerald-50/70 p-4 dark:border-emerald-900/60 dark:bg-emerald-950/20">
+    <section className="dm-card dm-card-active p-5">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h3 className="text-sm font-semibold text-emerald-950 dark:text-emerald-100">
-            How this run gets paid for
-          </h3>
-          <p className="mt-1 max-w-2xl text-sm text-emerald-900/75 dark:text-emerald-200/75">
+          <h3 className="m-0 text-[15px] font-semibold">How this run gets paid for</h3>
+          <p className="mt-1.5 max-w-2xl text-[13.5px] leading-[1.65] text-fg-muted">
             Sign in with your own Claude plan and the run bills your account rather than this
             server. An API key works too — it is encrypted here, shown only as a mask, and never
             readable back out.
           </p>
         </div>
         {selected && (
-          <span className="whitespace-nowrap rounded-full bg-white px-2.5 py-1 text-xs font-medium text-emerald-800 shadow-sm dark:bg-emerald-500/10 dark:text-emerald-200">
+          <span
+            className={`dm-pill shrink-0 ${
+              selected.ready
+                ? "border-accent/30 bg-accent/10 text-accent"
+                : "border-white/10 bg-white/[.04] text-fg-faint"
+            }`}
+          >
             {selected.ready ? `Ready · ${selected.source}` : "Not configured"}
           </span>
         )}
       </div>
 
-      {status && !status.available && (
-        <p className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/70 dark:bg-amber-950/40 dark:text-amber-200">
-          {status.reason ?? "Credentials cannot be stored on this deployment."}
-        </p>
-      )}
+      {status && !status.available && <Notice tone="warn">{status.reason ?? "Credentials cannot be stored on this deployment."}</Notice>}
       {status?.ephemeralSecret && (
-        <p className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/70 dark:bg-amber-950/40 dark:text-amber-200">
-          No <code>DOCEOMENTER_SECRET_KEY</code> is set, so credentials are encrypted with a key
-          that only exists while this process does — anything connected now reads as disconnected
-          after a restart.
-        </p>
+        <Notice tone="warn">
+          No <code className="font-mono">DOCEOMENTER_SECRET_KEY</code> is set, so credentials are
+          encrypted with a key that only exists while this process does — anything connected now
+          reads as disconnected after a restart.
+        </Notice>
       )}
-      {error && (
-        <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/70 dark:bg-red-950/50 dark:text-red-300">
-          {error}
-        </p>
-      )}
+      {error && <Notice tone="fail">{error}</Notice>}
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+      <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
         {(status?.providers ?? []).map((provider) => (
           <button
             key={provider.id}
             type="button"
             onClick={() => select({ provider: provider.id as AiProvider, model: provider.defaultModel })}
             aria-pressed={value.provider === provider.id}
-            className={`rounded-md border px-3 py-3 text-left transition ${
+            className={`rounded-sm border px-3.5 py-3 text-left transition-[border-color,background] duration-control ease-house ${
               value.provider === provider.id
-                ? "border-emerald-500 bg-white text-emerald-950 shadow-sm dark:border-emerald-400 dark:bg-emerald-500/10 dark:text-emerald-100"
-                : "border-emerald-200/80 bg-white/60 text-zinc-800 hover:border-emerald-300 dark:border-emerald-900 dark:bg-zinc-950/40 dark:text-zinc-200"
+                ? "border-accent/50 bg-accent/[.08]"
+                : "border-line bg-ink-900 hover:border-white/20"
             }`}
           >
             <span className="flex items-center justify-between gap-2">
-              <span className="text-sm font-semibold">{provider.label}</span>
+              <span className="text-[13.5px] font-semibold text-fg">{provider.label}</span>
               <span
-                className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                  provider.ready
-                    ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-200"
-                    : "bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
+                className={`shrink-0 whitespace-nowrap rounded-pill px-2 py-0.5 font-mono text-[10px] uppercase tracking-[.1em] ${
+                  provider.ready ? "bg-accent/15 text-accent" : "bg-white/[.06] text-fg-faint"
                 }`}
               >
                 {provider.ready ? provider.source : "not set up"}
               </span>
             </span>
-            <span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">{provider.blurb}</span>
+            <span className="mt-1.5 block text-[12.5px] leading-[1.55] text-fg-muted">{provider.blurb}</span>
             {provider.plan && (
-              <span className="mt-1 block text-xs text-emerald-700 dark:text-emerald-300">
+              <span className="mt-1.5 block font-mono text-[11px] text-accent">
                 plan: {provider.plan}
                 {provider.expired ? " · token expired, refreshes on next use" : ""}
               </span>
@@ -164,15 +175,13 @@ export function ProviderPanel({
 
       {selected && (
         <div className="mt-4">
-          {selected.id === "claude-code" && (
-            <ClaudeTerminal onChange={() => void refresh()} />
+          {selected.id === "claude-code" && <ClaudeTerminal onChange={() => void refresh()} />}
+
+          {selected.id === "codex" && (
+            <CodexNote status={selected} localCliEnabled={status?.localCliEnabled ?? false} />
           )}
 
-          {selected.id === "codex" && <CodexNote status={selected} localCliEnabled={status?.localCliEnabled ?? false} />}
-
-          {selected.kind === "key" && (
-            <KeyField provider={selected} onSaved={(next) => setStatus(next)} />
-          )}
+          {selected.kind === "key" && <KeyField provider={selected} onSaved={(next) => setStatus(next)} />}
 
           <ModelPicker
             provider={selected}
@@ -185,9 +194,20 @@ export function ProviderPanel({
   );
 }
 
+/** Amber is the degraded gate, red is a blocking fault — the only two non-cyan signals. */
+function Notice({ tone, children }: { tone: "warn" | "fail"; children: React.ReactNode }) {
+  const palette =
+    tone === "warn"
+      ? "border-warn/30 bg-warn/[.07] text-[#D8C9A6]"
+      : "border-fail/30 bg-fail/[.08] text-fail";
+  return (
+    <p className={`mt-3 rounded-sm border px-3.5 py-2.5 text-[13px] leading-[1.6] ${palette}`}>{children}</p>
+  );
+}
+
 function CodexNote({ status, localCliEnabled }: { status: ProviderStatus; localCliEnabled: boolean }) {
   return (
-    <p className="rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
+    <p className="dm-well rounded-sm px-3.5 py-3 text-[12.5px] leading-[1.65] text-fg-muted">
       {!localCliEnabled
         ? "Machine logins are disabled on this deployment (ALLOW_LOCAL_CLI=false), so Codex is unavailable here."
         : status.ready
@@ -240,28 +260,28 @@ function KeyField({
   return (
     <div className="space-y-2">
       <label className="flex flex-col gap-2">
-        <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
-          {provider.label}
+        <span className="font-mono text-[11px] tracking-label text-fg-faint">
+          {provider.label.toUpperCase()}
           {provider.hint && (
-            <span className="ml-2 font-mono text-xs text-zinc-500 dark:text-zinc-400">
+            <span className="ml-2 normal-case tracking-normal text-fg-faint">
               {provider.source === "environment" ? `${provider.hint} (from the server env)` : provider.hint}
             </span>
           )}
         </span>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <input
             type="password"
             autoComplete="off"
             value={key}
             onChange={(e) => setKey(e.target.value)}
             placeholder={provider.wire === "openai" ? "sk-..." : "sk-ant-..."}
-            className="h-10 min-w-0 flex-1 rounded-md border border-zinc-300 bg-white px-3 font-mono text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 dark:border-zinc-700 dark:bg-zinc-900"
+            className="dm-input h-11 min-w-0 flex-1 text-[13px]"
           />
           <button
             type="button"
             disabled={busy || key.trim().length === 0}
             onClick={() => void save(key.trim())}
-            className="h-10 rounded-md bg-zinc-950 px-4 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-emerald-500 dark:text-zinc-950 dark:hover:bg-emerald-400"
+            className="dm-btn h-11 px-5 text-[13px]"
           >
             Save
           </button>
@@ -270,14 +290,14 @@ function KeyField({
               type="button"
               disabled={busy}
               onClick={() => void save(null)}
-              className="h-10 rounded-md border border-zinc-300 px-4 text-sm font-medium text-zinc-700 transition hover:border-zinc-400 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300"
+              className="dm-btn-secondary h-11 px-5 text-[13px]"
             >
               Remove
             </button>
           )}
         </div>
       </label>
-      {note && <p className="text-xs text-zinc-500 dark:text-zinc-400">{note}</p>}
+      {note && <p className="font-mono text-[11px] text-fg-faint">{note}</p>}
     </div>
   );
 }
@@ -301,19 +321,19 @@ function ModelPicker({
   const current = provider.models.find((m) => m.id === value);
   return (
     <label className="mt-3 flex flex-col gap-2">
-      <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">Model</span>
+      <span className="font-mono text-[11px] tracking-label text-fg-faint">MODEL</span>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="h-10 rounded-md border border-zinc-300 bg-white px-3 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 dark:border-zinc-700 dark:bg-zinc-900"
+        className="dm-input h-11 cursor-pointer text-[13px]"
       >
         {provider.models.map((model) => (
-          <option key={model.id} value={model.id}>
+          <option key={model.id} value={model.id} className="bg-ink-800 text-fg">
             {model.label} · {model.tier}
           </option>
         ))}
       </select>
-      {current && <span className="text-xs text-zinc-500 dark:text-zinc-400">{current.note}</span>}
+      {current && <span className="text-[12.5px] leading-[1.6] text-fg-muted">{current.note}</span>}
     </label>
   );
 }
