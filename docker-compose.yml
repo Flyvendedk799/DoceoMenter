@@ -20,11 +20,22 @@ services:
       REDIS_URL: redis://redis:6379
       DATA_ROOT: /work/runs
       RUN_MODE: in-process
+      # The worker resolves each run's credential itself, so it needs the same
+      # secret and the same credential store as the web app — a different key
+      # here reads every connected subscription as disconnected.
+      DOCEOMENTER_SECRET_KEY: ${DOCEOMENTER_SECRET_KEY:-}
+      CREDENTIALS_DIR: /work/credentials
+      # A container has no `claude` login of its own, and a shared deployment
+      # should not spend the host's plan on a stranger's run.
+      ALLOW_LOCAL_CLI: ${ALLOW_LOCAL_CLI:-false}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       MAX_REPO_MB: 500
       MAX_RUN_SECONDS: 600
     volumes:
       - runs-data:/work/runs
+      - credentials-data:/work/credentials
 
 volumes:
   runs-data:
+  credentials-data:

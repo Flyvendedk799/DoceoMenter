@@ -11,8 +11,36 @@ export const GitRefSchema = z
   )
   .refine((s) => !s.startsWith("-") && !s.includes(".."), "invalid ref");
 
-export const AiProviderSchema = z.enum(["claude", "openai"]);
-export type AiProvider = z.infer<typeof AiProviderSchema>;
+/**
+ * How a run is paid for.
+ *
+ * These are `ai-auth`'s provider ids, and the split they make is the one worth keeping: a
+ * provider is not the same question as the wire it speaks. `claude-code` and `anthropic` both
+ * talk to the Messages API, but the first bills a person's plan and the second bills a card,
+ * and the credential each needs has nothing in common with the other's.
+ *
+ * `"claude"` is the id this app used before the two were distinguished, and it meant an
+ * Anthropic API key. Runs persisted then still parse, as that.
+ */
+export const AI_PROVIDERS = ["anthropic", "claude-code", "openai", "codex"] as const;
+export const AiProviderSchema = z.preprocess(
+  (value) => (value === "claude" ? "anthropic" : value),
+  z.enum(AI_PROVIDERS),
+);
+export type AiProvider = (typeof AI_PROVIDERS)[number];
+
+/**
+ * A model id, checked for shape only.
+ *
+ * Which ids exist is the registry's business, and it moves faster than this schema should: a
+ * hard-coded enum here would reject a model the provider shipped this morning. The characters
+ * are constrained because the value reaches a URL and a log line.
+ */
+export const ModelIdSchema = z
+  .string()
+  .min(1)
+  .max(64)
+  .regex(/^[A-Za-z0-9._-]+$/, "invalid model id");
 
 export const RunSpecSchema = z.object({
   url: z
@@ -27,7 +55,8 @@ export const RunSpecSchema = z.object({
   includeVideo: z.boolean().optional(),
   bootApp: z.boolean().optional(),
   provider: AiProviderSchema.optional(),
-  apiKey: z.string().min(1).optional(),
+  model: ModelIdSchema.optional(),
+  apiKey: z.string().min(1).max(400).optional(),
 });
 export type RunSpec = z.infer<typeof RunSpecSchema>;
 
@@ -36,13 +65,13 @@ export const RUN_SPEC_DEFAULTS = {
   outputStyle: "standard" as const,
   includeVideo: true,
   bootApp: true,
-  provider: "claude" as const,
+  provider: "anthropic" as const,
 };
 
 export type ResolvedRunSpec = Required<
   Pick<RunSpec, "ref" | "outputStyle" | "includeVideo" | "bootApp" | "provider">
 > &
-  Pick<RunSpec, "url" | "apiKey">;
+  Pick<RunSpec, "url" | "apiKey" | "model">;
 
 /**
  * A run id is exactly the 12 lowercase-hex chars produced by
@@ -74,6 +103,7 @@ export function resolveRunSpec(spec: RunSpec): ResolvedRunSpec {
     includeVideo: spec.includeVideo ?? RUN_SPEC_DEFAULTS.includeVideo,
     bootApp: spec.bootApp ?? RUN_SPEC_DEFAULTS.bootApp,
     provider: spec.provider ?? RUN_SPEC_DEFAULTS.provider,
+    model: spec.model,
     apiKey: spec.apiKey,
   };
 }

@@ -1,5 +1,5 @@
-export { createClaudeClient } from "./client.js";
-export type { ClaudeClient, ClaudeClientOptions } from "./client.js";
+export { createClaudeClient, ProviderCallError } from "./client.js";
+export type { ClaudeClient, ClaudeClientOptions, WireCredential } from "./client.js";
 export { SYSTEM_PROMPT, USER_CONCEPT_PROMPT, USER_TECHNICAL_PROMPT } from "./prompts.js";
 export { buildRepoContext } from "./context.js";
 export { createFixtureClient } from "./fixture.js";

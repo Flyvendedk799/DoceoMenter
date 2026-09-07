@@ -14,6 +14,12 @@ export PLAYWRIGHT_BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-play
 export DATA_ROOT=${DATA_ROOT:-/tmp/doceomenter-runs}
 export REDIS_URL=${REDIS_URL:-redis://127.0.0.1:6379}
 export PORT=${PORT:-3010}
+# One secret and one credential store across both processes, or the worker cannot read a
+# subscription the browser connected. Deterministic for e2e: no machine login is consulted, so
+# a developer's own `claude` session cannot change what the tests see.
+export DOCEOMENTER_SECRET_KEY=${DOCEOMENTER_SECRET_KEY:-doceomenter-local-dev-secret}
+export CREDENTIALS_DIR=${CREDENTIALS_DIR:-/tmp/doceomenter-credentials}
+export ALLOW_LOCAL_CLI=${ALLOW_LOCAL_CLI:-false}
 
 if ! redis-cli -u "$REDIS_URL" ping >/dev/null 2>&1; then
   echo "[stack] starting redis"

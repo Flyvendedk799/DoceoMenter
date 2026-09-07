@@ -23,12 +23,18 @@ importers:
 
   apps/web:
     dependencies:
+      '@doceomenter/auth':
+        specifier: workspace:*
+        version: link:../../packages/auth
       '@doceomenter/shared':
         specifier: workspace:*
         version: link:../../packages/shared
       '@doceomenter/worker':
         specifier: workspace:*
         version: link:../worker
+      '@flyvendedk799/ai-auth':
+        specifier: github:Flyvendedk799/ai-auth
+        version: git+https://git@github.com:Flyvendedk799/ai-auth.git#8e2441f9846c3520fd51b61aa6610b9597a1e681(react@18.3.1)
       bullmq:
         specifier: 5.34.10
         version: 5.34.10
@@ -75,6 +81,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@doceomenter/auth':
+        specifier: workspace:*
+        version: link:../../packages/auth
       '@doceomenter/boot':
         specifier: workspace:*
         version: link:../../packages/boot
@@ -109,6 +118,22 @@ importers:
       tsx:
         specifier: 4.19.2
         version: 4.19.2
+      typescript:
+        specifier: 5.6.3
+        version: 5.6.3
+      vitest:
+        specifier: 2.1.4
+        version: 2.1.4(@types/node@22.9.0)
+
+  packages/auth:
+    dependencies:
+      '@flyvendedk799/ai-auth':
+        specifier: github:Flyvendedk799/ai-auth
+        version: git+https://git@github.com:Flyvendedk799/ai-auth.git#8e2441f9846c3520fd51b61aa6610b9597a1e681(react@18.3.1)
+    devDependencies:
+      '@types/node':
+        specifier: 22.9.0
+        version: 22.9.0
       typescript:
         specifier: 5.6.3
         version: 5.6.3
@@ -165,6 +190,9 @@ importers:
       '@doceomenter/shared':
         specifier: workspace:*
         version: link:../shared
+      '@flyvendedk799/ai-auth':
+        specifier: github:Flyvendedk799/ai-auth
+        version: git+https://git@github.com:Flyvendedk799/ai-auth.git#8e2441f9846c3520fd51b61aa6610b9597a1e681(react@18.3.1)
       zod:
         specifier: 3.25.76
         version: 3.25.76
@@ -526,6 +554,19 @@ packages:
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
+
+  '@flyvendedk799/ai-auth@git+https://git@github.com:Flyvendedk799/ai-auth.git#8e2441f9846c3520fd51b61aa6610b9597a1e681':
+    resolution: {commit: 8e2441f9846c3520fd51b61aa6610b9597a1e681, repo: git@github.com:Flyvendedk799/ai-auth.git, type: git}
+    version: 0.9.0
+    engines: {node: '>=20'}
+    peerDependencies:
+      fastify: '>=4'
+      react: '>=18'
+    peerDependenciesMeta:
+      fastify:
+        optional: true
+      react:
+        optional: true
 
   '@img/sharp-darwin-arm64@0.33.5':
     resolution: {integrity: sha512-UT4p+iz/2H4twwAoLCqfA9UH5pI6DggwKEGuaPy7nCVQ8ZsiY5PIcrRvD1DzuY3qYL07NtIQcWnBSY/heikIFQ==}
@@ -1932,6 +1973,10 @@ snapshots:
 
   '@esbuild/win32-x64@0.23.1':
     optional: true
+
+  '@flyvendedk799/ai-auth@git+https://git@github.com:Flyvendedk799/ai-auth.git#8e2441f9846c3520fd51b61aa6610b9597a1e681(react@18.3.1)':
+    optionalDependencies:
+      react: 18.3.1
 
   '@img/sharp-darwin-arm64@0.33.5':
     optionalDependencies:

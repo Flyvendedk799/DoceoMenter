@@ -10,6 +10,7 @@ import type {
   Summary,
   Technical,
 } from "./schemas.js";
+import type { AiProvider } from "./schemas.js";
 import type { StageName, TerminalState } from "./constants.js";
 
 export type Manifest = {
@@ -90,6 +91,22 @@ export type RunState = {
   createdAt: string;
   updatedAt: string;
   stages: StageState[];
+  /**
+   * How this run was paid for. Written once the credential is resolved, and free of secrets
+   * by construction — a source and a plan name, never a token. It is what lets the finished
+   * run say "your Claude Max plan, on opus-5" rather than leaving people to guess which of
+   * four possible credentials answered.
+   */
+  provider?: {
+    id: AiProvider;
+    label: string;
+    /** "connected account", "machine login", "stored key", "environment", "request". */
+    source: string;
+    model: string;
+    plan?: string | null;
+    /** True when no credential was found and deterministic fixtures stood in for a model. */
+    fixture: boolean;
+  };
   artifacts?: {
     reportMd?: string;
     deckHtml?: string;

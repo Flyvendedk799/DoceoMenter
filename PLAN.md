@@ -722,7 +722,12 @@ executor should **not** skip.
 `.env.example` (committed) lists:
 
 ```
-ANTHROPIC_API_KEY=          # default key (BYOK overrides per request)
+DOCEOMENTER_SECRET_KEY=     # encrypts stored credentials; signs the account cookie
+CREDENTIALS_DIR=            # defaults to <DATA_ROOT>/../credentials
+CREDENTIALS_DATABASE_URL=   # optional: Postgres instead of a file
+ALLOW_LOCAL_CLI=true        # may a `claude`/`codex` login on the host be used
+ANTHROPIC_API_KEY=          # deployment-wide fallback key
+OPENAI_API_KEY=
 REDIS_URL=redis://localhost:6379
 STORAGE_DRIVER=local        # local | s3
 S3_BUCKET=
@@ -738,6 +743,43 @@ ENABLE_DOCKER_IN_DOCKER=false
 
 `apps/web/lib/config.ts` and `apps/worker/src/config.ts` both validate
 their slice of env with `zod` at startup and exit on misconfiguration.
+
+### Credentials (`packages/auth`, over `ai-auth`)
+
+Model calls are paid for in one of four ways, and which one is the *user's*
+choice rather than the operator's — a per-account credential only an admin
+could install would defeat the point:
+
+| Provider | Credential | Held where |
+|---|---|---|
+| `claude-code` | Claude subscription, PKCE OAuth | Sealed in the credential store, keyed by account |
+| `anthropic` | Metered API key | Sealed in the store (per browser), or the host env |
+| `codex` | ChatGPT subscription | The host's own `codex` login, re-read never written |
+| `openai` | Metered API key | Sealed in the store (per browser), or the host env |
+
+Rules the implementation holds to, each of which is load-bearing:
+
+1. **The identity block.** Every request on a subscription token opens with
+   the Claude Code identity as its own first system block. Without it
+   Anthropic refuses Opus and Sonnet with a 429 naming a limit the plan is
+   nowhere near — while Haiku, the model anyone would test a credential with,
+   answers normally.
+2. **`authToken`, never `apiKey`.** `apiKey` is `null` explicitly, or the SDK
+   reads `ANTHROPIC_API_KEY` from the environment and sends `x-api-key`
+   alongside a perfectly good bearer token, which Anthropic rejects.
+3. **Ids travel, tokens do not.** `RunJobData` carries an account id; the
+   worker resolves and refreshes the credential when it needs one. Nothing
+   spendable is written to Redis, and a queued job cannot run on a token that
+   expired while it waited.
+4. **Refresh only what we own.** A credential minted by our own login is
+   refreshed and the rotated refresh token written back. A credential
+   belonging to the machine's CLI is never refreshed while it is still live —
+   rotating it would break the CLI's own session.
+5. **No read-back.** A stored key is returned only as a mask. There is no
+   route that hands one to a browser, including the browser that stored it.
+6. **The label is half the key.** Each store derives its key from the host
+   secret plus its own label, so a value written by the key store cannot be
+   opened with the OAuth store's key.
 
 ---
 

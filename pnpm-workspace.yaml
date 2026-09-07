@@ -3,3 +3,9 @@ packages:
   - "packages/*"
   - "tests/e2e"
   - "tests/fixtures/*"
+
+# `@flyvendedk799/ai-auth` is installed from git, so pnpm has to run its
+# `prepare` (tsc) build to produce `dist/`. Git-hosted packages need explicit
+# permission for that since pnpm 10.
+onlyBuiltDependencies:
+  - "@flyvendedk799/ai-auth"

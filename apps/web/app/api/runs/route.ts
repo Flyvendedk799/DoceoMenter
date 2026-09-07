@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
 import { RunSpecSchema } from "@doceomenter/shared";
 import { getBus, getQueue, getStore, getConfig, isRedisReachable } from "../../../lib/server";
+import { resolveCaller, withAccountCookie } from "../../../lib/auth";
 import { initialRunState, runPipeline } from "@doceomenter/worker";
 
 export const runtime = "nodejs";
@@ -13,15 +14,22 @@ const MAX_INPROCESS_RUNS = 3;
 let inProcessRuns = 0;
 
 export async function POST(req: Request) {
+  // Resolved before anything else so the run is tied to the browser that started it: the
+  // worker looks the credential up by this id when it needs one, rather than being handed a
+  // token that has to survive a queue.
+  const caller = await resolveCaller(req);
   const body = (await req.json().catch(() => ({}))) as unknown;
   const parsed = RunSpecSchema.safeParse(body);
   if (!parsed.success) {
     // Return curated field paths only — never the raw zod message (leaks schema
     // internals).
     const fields = Object.keys(parsed.error.flatten().fieldErrors);
-    return NextResponse.json(
-      { error: "Invalid request body", fields: fields.length ? fields : undefined },
-      { status: 400 },
+    return withAccountCookie(
+      NextResponse.json(
+        { error: "Invalid request body", fields: fields.length ? fields : undefined },
+        { status: 400 },
+      ),
+      caller,
     );
   }
   const spec = parsed.data;
@@ -38,9 +46,12 @@ export async function POST(req: Request) {
   const useInProcess = process.env.DOCEOMENTER_INPROCESS === "1" || !redisAvailable;
   if (useInProcess) {
     if (inProcessRuns >= MAX_INPROCESS_RUNS) {
-      return NextResponse.json(
-        { error: "Server busy — too many runs in progress, try again shortly." },
-        { status: 429 },
+      return withAccountCookie(
+        NextResponse.json(
+          { error: "Server busy — too many runs in progress, try again shortly." },
+          { status: 429 },
+        ),
+        caller,
       );
     }
     inProcessRuns += 1;
@@ -48,7 +59,14 @@ export async function POST(req: Request) {
     const sharedStore = getStore();
     setImmediate(async () => {
       try {
-        await runPipeline({ runId, spec, config, store: sharedStore, bus });
+        await runPipeline({
+          runId,
+          spec,
+          accountId: caller.accountId,
+          config,
+          store: sharedStore,
+          bus,
+        });
       } catch (e) {
         console.error(`[run ${runId}] in-process pipeline failed:`, e);
         // Ensure the run reaches a terminal state even if it threw before the
@@ -71,11 +89,11 @@ export async function POST(req: Request) {
     const queue = getQueue();
     await queue.add(
       "run",
-      { runId, spec },
+      { runId, spec, accountId: caller.accountId },
       { removeOnComplete: 100, removeOnFail: 100, attempts: 1 },
     );
   }
-  return NextResponse.json({ runId });
+  return withAccountCookie(NextResponse.json({ runId }), caller);
 }
 
 function generateRunId(): string {

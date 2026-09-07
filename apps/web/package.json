@@ -11,8 +11,10 @@
     "start": "next start -p 3000"
   },
   "dependencies": {
+    "@doceomenter/auth": "workspace:*",
     "@doceomenter/shared": "workspace:*",
     "@doceomenter/worker": "workspace:*",
+    "@flyvendedk799/ai-auth": "github:Flyvendedk799/ai-auth",
     "bullmq": "5.34.10",
     "ioredis": "5.7.0",
     "next": "14.2.18",
