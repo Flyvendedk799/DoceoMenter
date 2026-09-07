@@ -21,10 +21,30 @@ export DOCEOMENTER_SECRET_KEY=${DOCEOMENTER_SECRET_KEY:-doceomenter-local-dev-se
 export CREDENTIALS_DIR=${CREDENTIALS_DIR:-/tmp/doceomenter-credentials}
 export ALLOW_LOCAL_CLI=${ALLOW_LOCAL_CLI:-false}
 
-if ! redis-cli -u "$REDIS_URL" ping >/dev/null 2>&1; then
+# Is Redis already listening?
+#
+# This used to ask `redis-cli`, which is not installed on a CI runner — so a perfectly healthy
+# service container read as absent, the fallback reached for a `redis-server` that is not
+# installed either, and the job died with "command not found". A bare TCP connect asks the only
+# question that matters and needs nothing installed.
+redis_target=${REDIS_URL#*://}
+redis_target=${redis_target%%/*}
+redis_host=${redis_target%%:*}
+redis_port=${redis_target##*:}
+[ "$redis_port" = "$redis_host" ] && redis_port=6379
+[ -n "$redis_host" ] || redis_host=127.0.0.1
+
+if (exec 3<>"/dev/tcp/$redis_host/$redis_port") 2>/dev/null; then
+  echo "[stack] redis already listening on $redis_host:$redis_port"
+elif command -v redis-server >/dev/null 2>&1; then
   echo "[stack] starting redis"
-  redis-server --daemonize yes --dir /tmp --logfile /tmp/redis.log --port 6379
+  redis-server --daemonize yes --dir /tmp --logfile /tmp/redis.log --port "$redis_port"
   sleep 0.5
+else
+  # Better than launching nothing and failing later inside the worker, where the message is
+  # about a connection refused rather than about Redis being missing.
+  echo "[stack] no redis listening on $redis_host:$redis_port, and no redis-server to start" >&2
+  exit 1
 fi
 
 echo "[stack] starting worker"
