@@ -43,6 +43,9 @@ The full implementation plan lives in [`PLAN.md`](./PLAN.md).
 - The worker pulls the job, runs the 9-stage pipeline (see `PLAN.md` § 4), and persists artifacts under `data/runs/<id>/`.
 - Stage events stream from worker → web over Redis pub/sub → SSE → React.
 - Files are served back to the browser through `/api/runs/:id/files/*`.
+- The finished pack is readable in the app at `/run/:id/outputs` — the report typeset from
+  `report.md`, the deck driven live in its own frame, and both JSON payloads — so nothing has to
+  be downloaded to be reviewed.
 
 ---
 

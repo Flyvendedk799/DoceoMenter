@@ -17,11 +17,13 @@ const REPO_URL = process.env.E2E_REPO_URL ?? "https://github.com/sindresorhus/sl
 
 test("home → run → artifacts", async ({ page, baseURL }) => {
   await page.goto(baseURL!);
-  await expect(page.getByRole("heading", { name: "DoceoMenter" })).toBeVisible();
+  // The wordmark lives in the persistent nav; the hero carries the display line.
+  await expect(page.getByRole("navigation").getByText("DoceoMenter")).toBeVisible();
+  await expect(page.getByRole("heading", { name: /A documented case out/ })).toBeVisible();
 
   // Fill the URL and submit.
   await page.getByLabel("GitHub repository URL").fill(REPO_URL);
-  await page.getByRole("button", { name: "Generate" }).click();
+  await page.getByRole("button", { name: "Generate case" }).click();
 
   // We should land on /run/<id> with the progress UI.
   await page.waitForURL(/\/run\/[a-f0-9]+$/, { timeout: 15_000 });

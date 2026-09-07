@@ -2,14 +2,380 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  color-scheme: light dark;
+/*
+ * DoceoMenter design system v1.
+ *
+ * Graphite ground, one cyan signal. The literal values live here rather than in
+ * the Tailwind config so the deck renderer and this app can quote the same
+ * numbers, and so a token can be overridden per-surface without a rebuild.
+ */
+@layer base {
+  :root {
+    color-scheme: dark;
+
+    --ink-900: #0e1013;
+    --ink-850: #101317;
+    --ink-800: #14171b;
+    --ink-700: #1b1f24;
+    --well: #0b0d0f;
+    --line: rgba(255, 255, 255, 0.08);
+    --line-strong: rgba(255, 255, 255, 0.16);
+
+    --fg: #f2f4f6;
+    --fg-soft: #c6cdd4;
+    --fg-muted: #99a2ac;
+    --fg-faint: #66707a;
+
+    --accent: #5ad8e6;
+    --accent-bright: #8de7f0;
+    --accent-deep: #0e8c99;
+    --accent-ink: #08191c;
+    --haze: #2b4c7e;
+
+    --warn: #e8b44f;
+    --fail: #e8685a;
+
+    --r-sm: 12px;
+    --r-md: 16px;
+    --r-lg: 18px;
+    --r-pill: 999px;
+
+    --ease: cubic-bezier(0.16, 1, 0.3, 1);
+
+    --font-display: "Instrument Serif", Georgia, "Times New Roman", serif;
+    --font-sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    margin: 0;
+    background: var(--ink-900);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection {
+    background: rgba(90, 216, 230, 0.28);
+    color: #fff;
+  }
+
+  /* Focus is a token, not a per-component decision. */
+  :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px rgba(90, 216, 230, 0.14);
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.18);
+  }
 }
 
-body {
-  @apply bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100;
+/*
+ * Components. Every border in the product is `--line`; depth comes from that
+ * hairline plus a background step, never from a shadow. The two exceptions —
+ * the hero's floating panel and a hovering primary button — are spelled out.
+ */
+@layer components {
+  .dm-card {
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    background: var(--ink-800);
+  }
+
+  .dm-card-lift {
+    transition:
+      transform 0.6s var(--ease),
+      border-color 0.6s var(--ease);
+  }
+  .dm-card-lift:hover {
+    transform: translateY(-4px);
+    border-color: rgba(90, 216, 230, 0.35);
+  }
+
+  .dm-card-active {
+    border-color: rgba(90, 216, 230, 0.28);
+    background:
+      linear-gradient(160deg, rgba(90, 216, 230, 0.1), rgba(90, 216, 230, 0) 60%),
+      var(--ink-800);
+  }
+
+  .dm-glass {
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(20px);
+  }
+
+  .dm-well {
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    background: var(--well);
+    font-family: var(--font-mono);
+  }
+
+  /* Grid whose 1px gaps are the border — stat strips, stage tables, stack grids. */
+  .dm-grid-hair {
+    display: grid;
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    overflow: hidden;
+  }
+  .dm-grid-hair > * {
+    background: var(--ink-800);
+  }
+
+  .dm-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 44px;
+    padding: 0 22px;
+    border: none;
+    border-radius: var(--r-pill);
+    background: var(--accent);
+    color: var(--accent-ink);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition:
+      transform 0.45s var(--ease),
+      box-shadow 0.45s var(--ease),
+      opacity 0.3s var(--ease);
+  }
+  .dm-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 30px rgba(90, 216, 230, 0.28);
+  }
+  .dm-btn:disabled {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--fg-faint);
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+
+  .dm-btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 44px;
+    padding: 0 22px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-pill);
+    background: transparent;
+    color: var(--fg);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition:
+      border-color 0.45s var(--ease),
+      background 0.45s var(--ease);
+  }
+  .dm-btn-secondary:hover:not(:disabled) {
+    border-color: rgba(90, 216, 230, 0.6);
+    background: rgba(90, 216, 230, 0.06);
+  }
+  .dm-btn-secondary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .dm-btn-ghost {
+    display: inline-flex;
+    align-items: center;
+    height: 44px;
+    padding: 0 8px;
+    border: none;
+    border-radius: var(--r-pill);
+    background: transparent;
+    color: var(--fg-muted);
+    font-size: 14px;
+    cursor: pointer;
+    transition: color 0.3s var(--ease);
+  }
+  .dm-btn-ghost:hover {
+    color: var(--fg);
+  }
+
+  .dm-input {
+    height: 52px;
+    width: 100%;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: var(--r-sm);
+    background: var(--ink-900);
+    color: var(--fg);
+    padding: 0 16px;
+    font-family: var(--font-mono);
+    font-size: 14px;
+    outline: none;
+    transition:
+      border-color 0.4s var(--ease),
+      box-shadow 0.4s var(--ease);
+  }
+  .dm-input::placeholder {
+    color: var(--fg-faint);
+  }
+  .dm-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px rgba(90, 216, 230, 0.14);
+  }
+
+  .dm-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--fg-faint);
+  }
+
+  .dm-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--fg-faint);
+  }
+
+  .dm-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 30px;
+    padding: 0 14px;
+    border-radius: var(--r-pill);
+    border: 1px solid var(--line);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  /* Scroll reveal. Entrances travel 24px and fade at once, staged by 80ms. */
+  .dm-reveal {
+    opacity: 0;
+    transform: translateY(24px);
+    transition:
+      opacity 0.9s var(--ease),
+      transform 0.9s var(--ease);
+  }
+  .dm-reveal[data-shown="1"] {
+    opacity: 1;
+    transform: none;
+  }
 }
 
-::selection {
-  @apply bg-emerald-200 text-zinc-950;
+@keyframes dmDrift {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(6%, -4%, 0) scale(1.18);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+@keyframes dmDrift2 {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1.1);
+  }
+  50% {
+    transform: translate3d(-7%, 5%, 0) scale(0.92);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1.1);
+  }
+}
+@keyframes dmRise {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 26px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes dmFade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes dmPulse {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.35);
+  }
+}
+@keyframes dmSweep {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(400%);
+  }
+}
+@keyframes dmBar {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+@keyframes dmNudge {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+  50% {
+    transform: translateY(7px);
+    opacity: 1;
+  }
+}
+
+/* Nothing snaps, and nothing insists: reduced motion drops to a plain fade. */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .dm-reveal {
+    opacity: 1;
+    transform: none;
+  }
 }

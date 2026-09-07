@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { RunEvent, RunState, StageState } from "@doceomenter/shared";
 import { ArtifactList } from "./ArtifactList";
@@ -66,193 +67,249 @@ export function RunProgress({ initial }: { initial: RunState }) {
   const runningStage = state.stages.find((stage) => stage.status === "running");
   const progressPct = totalStages ? Math.round((resolvedStages / totalStages) * 100) : 0;
   const isTerminal = TERMINAL.has(state.state);
+  const elapsed = useElapsed(state.createdAt, isTerminal ? state.updatedAt : undefined);
 
   return (
-    <section className="space-y-6">
-      <header className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 sm:p-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">
-              Active case run
-            </p>
-            <h1 className="mt-2 break-words text-2xl font-semibold tracking-tight sm:text-3xl">
-              Run{" "}
-              <code className="rounded-md bg-zinc-100 px-2 py-1 text-xl dark:bg-zinc-800 sm:text-2xl">
-                {state.runId}
-              </code>
-            </h1>
-            <p className="mt-3 break-all text-sm text-zinc-600 dark:text-zinc-400">
-              {state.spec.url}
-            </p>
-          </div>
-          <span className={`w-fit rounded-full px-3 py-1 text-sm font-semibold ${runStateClass(state.state)}`}>
-            {labelForState(state.state)}
+    <section className="flex flex-col gap-8">
+      <header
+        className="flex flex-wrap items-end gap-5"
+        style={{ animation: "dmRise .8s cubic-bezier(.16,1,.3,1) both" }}
+      >
+        <div className="flex min-w-[280px] flex-1 flex-col gap-3">
+          <span className="font-mono text-[11px] uppercase tracking-eyebrow text-fg-faint">
+            Run {state.runId}
           </span>
+          <h1 className="m-0 break-all font-display text-[clamp(30px,5vw,58px)] font-normal leading-[1.02] tracking-[-.02em]">
+            {displayRepo(state.spec.url)}
+          </h1>
         </div>
-
-        <dl className="mt-5 grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
-          <RunMeta label="Ref" value={state.spec.ref ?? "main"} />
-          <RunMeta label="Depth" value={state.spec.outputStyle ?? "standard"} />
-          <RunMeta label="Media" value={state.spec.includeVideo === false ? "Screenshots" : "Screenshots + video"} />
-          <RunMeta label="Updated" value={formatStamp(state.updatedAt)} />
-          {state.provider && (
-            <RunMeta
-              label="Paid for by"
-              value={
-                state.provider.fixture
-                  ? "Fixtures — no credential configured"
-                  : `${state.provider.label} · ${state.provider.model}${
-                      state.provider.plan ? ` · ${state.provider.plan}` : ""
-                    }`
-              }
-            />
-          )}
-        </dl>
-
-        <div className="mt-5">
-          <div className="mb-2 flex items-center justify-between gap-3 text-xs text-zinc-500">
-            <span>{runningStage ? STAGE_LABEL[runningStage.name] : isTerminal ? "Run complete" : "Queued"}</span>
-            <span>
-              {resolvedStages}/{totalStages} stages
-            </span>
-          </div>
-          <div className="h-2 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
-            <div
-              className="h-full rounded-full bg-emerald-500 transition-all"
-              style={{ width: `${progressPct}%` }}
-            />
-          </div>
-        </div>
+        <span className={`dm-pill ${runStateClass(state.state)}`}>
+          <span
+            aria-hidden
+            className="h-1.5 w-1.5 rounded-full bg-current"
+            style={state.state === "running" ? { animation: "dmPulse 2.4s ease-in-out infinite" } : undefined}
+          />
+          {labelForState(state.state)} · {elapsed}
+        </span>
       </header>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px] xl:items-start">
-        <div className="min-w-0 space-y-6">
-          <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 sm:p-5">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="text-base font-semibold tracking-tight">Pipeline</h2>
-                <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-                  {failedStages > 0
-                    ? `${failedStages} stage failed`
-                    : `${resolvedStages} stages resolved`}
-                </p>
-              </div>
-              <div className="grid grid-cols-3 overflow-hidden rounded-md border border-zinc-200 text-center text-xs dark:border-zinc-800">
-                <div className="px-3 py-2">
-                  <div className="font-semibold text-emerald-700 dark:text-emerald-300">
-                    {resolvedStages}
-                  </div>
-                  <div className="text-zinc-500">Resolved</div>
-                </div>
-                <div className="border-x border-zinc-200 px-3 py-2 dark:border-zinc-800">
-                  <div className="font-semibold text-sky-700 dark:text-sky-300">
-                    {state.stages.filter((stage) => stage.status === "running").length}
-                  </div>
-                  <div className="text-zinc-500">Running</div>
-                </div>
-                <div className="px-3 py-2">
-                  <div className="font-semibold text-zinc-700 dark:text-zinc-300">
-                    {state.stages.filter((stage) => stage.status === "pending").length}
-                  </div>
-                  <div className="text-zinc-500">Pending</div>
-                </div>
-              </div>
-            </div>
+      {/* A 2px rule is the whole progress indicator; the sweep inside it is what
+          says the machine is still moving. */}
+      <div
+        role="progressbar"
+        aria-valuenow={progressPct}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={`${resolvedStages} of ${totalStages} stages resolved`}
+        className="h-0.5 overflow-hidden rounded-sm bg-white/[.08]"
+      >
+        <div
+          className="relative h-full overflow-hidden bg-[linear-gradient(90deg,#0E8C99,#5AD8E6)] transition-[width] duration-surface ease-house"
+          style={{ width: `${progressPct}%` }}
+        >
+          {!isTerminal && (
+            <div className="absolute inset-0 animate-bar bg-[linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent)]" />
+          )}
+        </div>
+      </div>
 
-            <ol className="mt-5 grid gap-2">
-              {state.stages.map((stage) => (
-                <li
-                  key={stage.name}
-                  className="rounded-md border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-950/70"
-                >
-                  <div className="flex items-start gap-3">
-                    <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${stageDotClass(stage.status)}`} />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
-                        <p className="text-sm font-medium text-zinc-950 dark:text-zinc-50">
-                          {STAGE_LABEL[stage.name]}
-                        </p>
-                        <span className={`w-fit rounded-full px-2 py-0.5 text-[11px] font-semibold ${stageBadgeClass(stage.status)}`}>
-                          {stage.status}
-                        </span>
-                      </div>
-                      <p className="mt-1 min-h-5 text-xs leading-5 text-zinc-600 dark:text-zinc-400">
-                        {stage.message ?? defaultStageMessage(stage.status)}
-                      </p>
-                      {stage.status === "running" && typeof stage.pct === "number" ? (
-                        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
-                          <div
-                            className="h-full rounded-full bg-sky-500 transition-all"
-                            style={{ width: `${Math.max(0, Math.min(100, stage.pct))}%` }}
-                          />
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ol>
+      <div className="flex flex-wrap gap-x-6 gap-y-2 font-mono text-[11.5px] text-fg-faint">
+        <span>{state.spec.ref ?? "main"}</span>
+        <span>{state.spec.outputStyle ?? "standard"}</span>
+        <span>{state.spec.includeVideo === false ? "screenshots" : "screenshots + video"}</span>
+        <span>
+          {resolvedStages}/{totalStages} stages
+          {failedStages > 0 ? ` · ${failedStages} failed` : ""}
+        </span>
+        {state.provider && (
+          <span className="text-fg-muted">
+            {state.provider.fixture
+              ? "fixtures — no credential configured"
+              : `${state.provider.label} · ${state.provider.model}${
+                  state.provider.plan ? ` · ${state.provider.plan}` : ""
+                }`}
+          </span>
+        )}
+      </div>
+
+      {/* Capture and log are live instruments: once the run is over they have
+          nothing left to say, and the finished pipeline reads better full width. */}
+      <div
+        className={`grid items-start gap-5 ${
+          isTerminal ? "" : "xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"
+        }`}
+      >
+        <div className="dm-card min-w-0 overflow-hidden">
+          <div className="flex items-center gap-3 border-b border-line px-6 py-5">
+            <span className="dm-label">Pipeline</span>
+            <span className="ml-auto font-mono text-[11px] text-fg-faint">
+              {runningStage ? STAGE_LABEL[runningStage.name] : isTerminal ? "run complete" : "queued"}
+            </span>
+          </div>
+          <ol className="m-0 list-none p-0">
+            {state.stages.map((stage, index) => (
+              <li
+                key={stage.name}
+                className={`flex items-center gap-3.5 border-b border-white/[.05] px-6 py-4 last:border-b-0 ${
+                  stage.status === "running" ? "bg-accent/[.06]" : ""
+                }`}
+              >
+                <span className="w-6 shrink-0 font-mono text-[11px] text-fg-faint">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+                <span
+                  aria-hidden
+                  className={`h-2 w-2 shrink-0 rounded-full ${stageDotClass(stage.status)}`}
+                  style={stage.status === "running" ? { animation: "dmPulse 2s ease-in-out infinite" } : undefined}
+                />
+                <span className="min-w-0 flex-1">
+                  <span
+                    className={`block text-[14.5px] ${
+                      stage.status === "pending" || stage.status === "skipped" ? "text-fg-faint" : "text-fg"
+                    }`}
+                  >
+                    {STAGE_LABEL[stage.name]}
+                  </span>
+                  <span className="mt-0.5 block text-[12.5px] leading-[1.5] text-fg-muted">
+                    {stage.message ?? defaultStageMessage(stage.status)}
+                  </span>
+                  {stage.status === "running" && typeof stage.pct === "number" ? (
+                    <span className="mt-2 block h-px w-full overflow-hidden bg-white/[.08]">
+                      <span
+                        className="block h-full bg-accent transition-[width] duration-control ease-house"
+                        style={{ width: `${Math.max(0, Math.min(100, stage.pct))}%` }}
+                      />
+                    </span>
+                  ) : null}
+                </span>
+                <span className={`shrink-0 font-mono text-[11px] ${stageMetaClass(stage.status)}`}>
+                  {stageMeta(stage)}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
+
+        <div className={`min-w-0 flex-col gap-5 ${isTerminal ? "hidden" : "flex"}`}>
+          <section className="dm-card flex flex-col gap-4 p-6">
+            <div className="flex items-center gap-3">
+              <span className="dm-label">Live capture</span>
+              <span className="ml-auto font-mono text-[11px] text-fg-faint">
+                {Object.keys(thumbs).length} shot{Object.keys(thumbs).length === 1 ? "" : "s"}
+              </span>
+            </div>
+            {Object.keys(thumbs).length === 0 ? (
+              <div className="relative flex aspect-[16/10] items-center justify-center overflow-hidden rounded-sm border border-line bg-[repeating-linear-gradient(135deg,#171B20_0_10px,#14171B_10px_20px)]">
+                <span className="font-mono text-[11px] tracking-[.14em] text-fg-faint">
+                  {runningStage?.name === "capture" ? "chromium · capturing" : "no captures yet"}
+                </span>
+                {!isTerminal && (
+                  <div className="absolute inset-x-0 h-[60px] bg-[linear-gradient(180deg,transparent,rgba(90,216,230,.16),transparent)] [animation:dmSweep_3.4s_linear_infinite]" />
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                {Object.entries(thumbs).map(([id, src]) => (
+                  <figure key={id} className="m-0 overflow-hidden rounded-sm border border-line bg-ink-900">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={src} alt={id} className="aspect-video w-full object-cover" />
+                    <figcaption className="truncate px-2 py-1.5 font-mono text-[10.5px] text-fg-faint">
+                      {id}
+                    </figcaption>
+                  </figure>
+                ))}
+              </div>
+            )}
           </section>
 
-          <section className="rounded-lg border border-zinc-200 bg-zinc-950 shadow-sm dark:border-zinc-800">
-            <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-zinc-400">
-                Worker log
-              </h2>
-              <span className="text-xs text-zinc-500">{logs.length} lines</span>
+          <section className="dm-well flex flex-col gap-1.5 rounded-[20px] px-5 py-5">
+            <div className="mb-1 flex items-center gap-3">
+              <span className="dm-label">Worker log</span>
+              <span className="ml-auto font-mono text-[11px] text-fg-faint">{logs.length} lines</span>
             </div>
             <div
               ref={logRef}
               aria-live="polite"
-              className="h-64 overflow-auto p-4 font-mono text-xs leading-5 text-zinc-200"
+              className="flex h-64 flex-col gap-[7px] overflow-auto text-[12px] leading-[1.6]"
             >
-              {logs.length === 0 ? <span className="text-zinc-500">waiting for logs...</span> : null}
-              {logs.map((line, index) => (
-                <div key={`${line}-${index}`} className="break-words">
-                  {line}
-                </div>
-              ))}
+              {logs.length === 0 ? <span className="text-fg-faint">waiting for logs…</span> : null}
+              {logs.map((line, index) => {
+                const { time, message } = splitLogLine(line);
+                return (
+                  <div key={`${line}-${index}`} className="flex gap-3">
+                    {time && <span className="shrink-0 text-[#3E464E]">{time}</span>}
+                    <span className={`min-w-0 break-words ${logTone(message)}`}>{message}</span>
+                  </div>
+                );
+              })}
             </div>
           </section>
-
-          {Object.keys(thumbs).length > 0 && (
-            <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-zinc-500">
-                Live capture thumbnails
-              </h2>
-              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-                {Object.entries(thumbs).map(([id, src]) => (
-                  <figure key={id} className="overflow-hidden rounded-md border border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950">
-                    <img src={src} alt={id} className="aspect-video w-full object-cover" />
-                    <figcaption className="truncate px-2 py-1.5 text-xs text-zinc-500">{id}</figcaption>
-                  </figure>
-                ))}
-              </div>
-            </section>
-          )}
         </div>
-
-        <aside className="space-y-6 xl:sticky xl:top-6">
-          <QualitySummary runId={state.runId} state={state} />
-          {isTerminal && state.artifacts ? <ArtifactList runId={state.runId} state={state} /> : null}
-          {state.error ? (
-            <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 shadow-sm dark:border-red-900/70 dark:bg-red-950/50 dark:text-red-300">
-              <span className="font-semibold">Error:</span> {state.error}
-            </div>
-          ) : null}
-        </aside>
       </div>
+
+      {state.error ? (
+        <p className="m-0 rounded-md border border-fail/30 bg-fail/[.08] px-5 py-4 text-[14px] leading-[1.6] text-fail">
+          <span className="font-semibold">Error:</span> {state.error}
+        </p>
+      ) : null}
+
+      {isTerminal && state.artifacts ? (
+        <div className="flex flex-col gap-5">
+          <div className="flex flex-wrap items-center gap-4 border-t border-line pt-8">
+            <h2 className="m-0 font-display text-[clamp(26px,3.4vw,38px)] font-normal leading-[1.05] tracking-[-.02em]">
+              The case package is ready.
+            </h2>
+            <Link href={`/run/${state.runId}/outputs`} className="dm-btn ml-auto no-underline">
+              Open case package
+            </Link>
+          </div>
+          <QualitySummary runId={state.runId} state={state} />
+          <ArtifactList runId={state.runId} state={state} />
+        </div>
+      ) : (
+        <QualitySummary runId={state.runId} state={state} />
+      )}
     </section>
   );
 }
 
-function RunMeta({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 dark:border-zinc-800 dark:bg-zinc-950/70">
-      <dt className="text-xs font-medium uppercase tracking-[0.12em] text-zinc-500">{label}</dt>
-      <dd className="mt-1 truncate font-medium text-zinc-950 dark:text-zinc-50">{value}</dd>
-    </div>
-  );
+/** Ticks while the run is live, then freezes on the terminal stamp. */
+function useElapsed(startedAt: string, frozenAt?: string) {
+  const [now, setNow] = useState<number | undefined>();
+  useEffect(() => {
+    if (frozenAt) {
+      setNow(new Date(frozenAt).getTime());
+      return;
+    }
+    setNow(Date.now());
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [frozenAt]);
+
+  const start = new Date(startedAt).getTime();
+  if (now === undefined || Number.isNaN(start)) return "—";
+  const seconds = Math.max(0, Math.round((now - start) / 1000));
+  return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+/** `https://github.com/acme/atlas-ui` reads better as `github.com/acme/atlas-ui`. */
+function displayRepo(url: string) {
+  return url.replace(/^https?:\/\//, "").replace(/\/$/, "");
+}
+
+/** Worker lines often already carry a stamp; keep it in its own faint column. */
+function splitLogLine(line: string): { time?: string; message: string } {
+  const match = /^\s*(?:\[)?(\d{2}:\d{2}(?::\d{2})?|\d{4}-\d{2}-\d{2}T[\d:.]+Z?)(?:\])?\s+(.*)$/s.exec(line);
+  const stamp = match?.[1];
+  if (!match || !stamp) return { message: line };
+  return { time: stamp.includes("T") ? stamp.slice(11, 19) : stamp, message: match[2] ?? "" };
+}
+
+function logTone(message: string) {
+  if (/\b(error|failed|fatal)\b/i.test(message)) return "text-fail";
+  if (/\b(warn|degraded|skipped)\b/i.test(message)) return "text-warn";
+  if (/^(capture|boot|render|export):/i.test(message)) return "text-accent";
+  return "text-fg-muted";
 }
 
 function labelForState(state: RunState["state"]) {
@@ -272,54 +329,61 @@ function labelForState(state: RunState["state"]) {
   }
 }
 
+/** Four states only: queued, running, done, failed — degraded borrows amber. */
 function runStateClass(state: RunState["state"]) {
   switch (state) {
     case "done":
-      return "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300";
+      return "border-accent/30 bg-accent/10 text-accent";
     case "partial":
-      return "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300";
+      return "border-warn/30 bg-warn/10 text-warn";
     case "failed":
     case "cancelled":
-      return "bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-300";
+      return "border-fail/30 bg-fail/10 text-fail";
     case "running":
-      return "bg-sky-100 text-sky-800 dark:bg-sky-500/15 dark:text-sky-300";
+      return "border-accent/30 bg-accent/10 text-accent";
     case "queued":
-      return "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300";
+      return "border-white/10 bg-white/[.04] text-fg-faint";
   }
 }
 
 function stageDotClass(status: StageState["status"]) {
   switch (status) {
     case "done":
-      return "bg-emerald-500";
+      return "bg-accent";
     case "degraded":
-      return "bg-amber-400";
+      return "bg-warn";
     case "failed":
-      return "bg-red-500";
+      return "bg-fail";
     case "running":
-      return "bg-sky-500";
+      return "bg-accent";
     case "skipped":
-      return "bg-zinc-400";
+      return "bg-white/25";
     case "pending":
-      return "bg-zinc-300 dark:bg-zinc-700";
+      return "bg-white/[.18]";
   }
 }
 
-function stageBadgeClass(status: StageState["status"]) {
+function stageMetaClass(status: StageState["status"]) {
   switch (status) {
-    case "pending":
-      return "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300";
-    case "running":
-      return "bg-sky-100 text-sky-800 dark:bg-sky-500/15 dark:text-sky-300";
-    case "done":
-      return "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300";
-    case "skipped":
-      return "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400";
     case "degraded":
-      return "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300";
+      return "text-warn";
     case "failed":
-      return "bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-300";
+      return "text-fail";
+    default:
+      return "text-fg-faint";
   }
+}
+
+/** Duration once a stage has both ends; otherwise the status word itself. */
+function stageMeta(stage: StageState) {
+  if (stage.startedAt && stage.finishedAt) {
+    const ms = new Date(stage.finishedAt).getTime() - new Date(stage.startedAt).getTime();
+    if (Number.isFinite(ms) && ms >= 0) {
+      const label = ms >= 60_000 ? `${(ms / 60_000).toFixed(1)}m` : `${(ms / 1000).toFixed(1)}s`;
+      return stage.status === "done" ? label : `${stage.status} · ${label}`;
+    }
+  }
+  return stage.status;
 }
 
 function defaultStageMessage(status: StageState["status"]) {
@@ -337,10 +401,4 @@ function defaultStageMessage(status: StageState["status"]) {
     case "failed":
       return "Needs attention.";
   }
-}
-
-function formatStamp(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Unknown";
-  return value.replace("T", " ").slice(0, 19);
 }

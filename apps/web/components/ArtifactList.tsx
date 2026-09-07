@@ -11,6 +11,7 @@ export function ArtifactList({ runId, state }: { runId: string; state: RunState 
   const artifacts = [
     a.deckHtml
       ? {
+          file: "deck.html",
           title: "Presentation",
           description: "Browser-ready HTML deck for stakeholder review.",
           action: "Open presentation",
@@ -22,6 +23,7 @@ export function ArtifactList({ runId, state }: { runId: string; state: RunState 
       : undefined,
     a.deckPdf
       ? {
+          file: "deck.pdf",
           title: "PDF deck",
           description: "Portable slide export for sharing and archival.",
           action: "Download PDF",
@@ -33,6 +35,7 @@ export function ArtifactList({ runId, state }: { runId: string; state: RunState 
       : undefined,
     a.reportMd
       ? {
+          file: "report.md",
           title: "Markdown report",
           description: "Editable case write-up with evidence and captures.",
           action: "Download Markdown",
@@ -44,6 +47,7 @@ export function ArtifactList({ runId, state }: { runId: string; state: RunState 
       : undefined,
     a.caseStudyJson
       ? {
+          file: "case-study.json",
           title: "Portfolio export",
           description: "Structured case data for publishing workflows.",
           action: "Case export (JSON)",
@@ -55,6 +59,7 @@ export function ArtifactList({ runId, state }: { runId: string; state: RunState 
       : undefined,
     a.qualityJson
       ? {
+          file: "quality.json",
           title: "Quality report",
           description: "Pass, degraded, and fail checks for the case package.",
           action: "Quality report",
@@ -65,6 +70,7 @@ export function ArtifactList({ runId, state }: { runId: string; state: RunState 
         }
       : undefined,
     {
+      file: "state.json",
       title: "Run metadata",
       description: "Raw state snapshot for debugging and reproducibility.",
       action: "Run metadata (JSON)",
@@ -74,6 +80,7 @@ export function ArtifactList({ runId, state }: { runId: string; state: RunState 
       external: false,
     },
   ].filter(Boolean) as Array<{
+    file: string;
     title: string;
     description: string;
     action: string;
@@ -84,35 +91,23 @@ export function ArtifactList({ runId, state }: { runId: string; state: RunState 
   }>;
 
   return (
-    <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-zinc-500">
-            Generated outputs
-          </h3>
-          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-            Download the final package or inspect the source data.
-          </p>
-        </div>
-        <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
-          {artifacts.length} files
-        </span>
+    <section className="flex flex-col gap-5">
+      <div className="flex flex-wrap items-baseline gap-4 border-b border-line pb-3.5">
+        <span className="dm-label">Generated outputs</span>
+        <span className="ml-auto font-mono text-[11px] text-fg-faint">{artifacts.length} files</span>
       </div>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(280px,1fr))]">
         {artifacts.map((artifact) => (
           <article
             key={artifact.action}
-            className="flex min-h-40 flex-col justify-between rounded-md border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950/70"
+            className={`dm-card dm-card-lift flex min-h-[186px] flex-col gap-3 p-6 ${
+              artifact.primary ? "dm-card-active" : ""
+            }`}
           >
-            <div>
-              <h4 className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
-                {artifact.title}
-              </h4>
-              <p className="mt-2 text-sm leading-6 text-zinc-600 dark:text-zinc-400">
-                {artifact.description}
-              </p>
-            </div>
+            <span className="font-mono text-[11px] text-accent">{artifact.file}</span>
+            <h4 className="m-0 text-[18px] font-semibold">{artifact.title}</h4>
+            <p className="m-0 flex-1 text-[13.5px] leading-[1.6] text-fg-muted">{artifact.description}</p>
             {artifact.href ? (
               <a
                 href={artifact.href}
@@ -120,13 +115,9 @@ export function ArtifactList({ runId, state }: { runId: string; state: RunState 
                 download={artifact.download || undefined}
                 target={artifact.external ? "_blank" : undefined}
                 rel={artifact.external ? "noreferrer" : undefined}
-                className={`mt-4 inline-flex h-10 items-center justify-center rounded-md px-3 text-sm font-semibold transition ${
-                  artifact.primary
-                    ? "bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-emerald-500 dark:text-zinc-950 dark:hover:bg-emerald-400"
-                    : "border border-zinc-300 bg-white text-zinc-900 hover:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:border-zinc-600"
-                }`}
+                className="text-[13px] font-semibold text-fg no-underline transition-colors duration-micro hover:text-accent"
               >
-                {artifact.action}
+                {artifact.action} →
               </a>
             ) : null}
           </article>

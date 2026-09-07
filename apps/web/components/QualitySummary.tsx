@@ -79,150 +79,154 @@ export function QualitySummary({ runId, state }: { runId: string; state: RunStat
   const caseStudy = loaded.caseStudy;
 
   return (
-    <section className="space-y-4">
-      <div className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-zinc-500">
-              Reference readiness
-            </h3>
-            <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-              {quality?.summary ?? (loaded.loading ? "Loading quality report..." : "Quality report pending.")}
-            </p>
-          </div>
+    <section className="flex flex-col gap-5">
+      <div className="flex flex-wrap items-baseline gap-4 border-b border-line pb-3.5">
+        <span className="dm-label">Reference readiness</span>
+        <span className="max-w-[60ch] text-[13px] leading-[1.6] text-fg-muted">
+          {quality?.summary ?? (loaded.loading ? "Loading quality report…" : "Quality report pending.")}
+        </span>
+        {quality ? (
+          <span className={`dm-pill ml-auto ${statusClass(quality.status)}`}>
+            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-current" />
+            {STATUS_LABEL[quality.status]}
+          </span>
+        ) : null}
+      </div>
+
+      {loaded.error ? (
+        <p className="m-0 rounded-md border border-fail/30 bg-fail/[.08] px-4 py-3 text-[13.5px] text-fail">
+          {loaded.error}
+        </p>
+      ) : null}
+
+      {/* Audit metrics as a hairline strip — serif numbers, mono labels. */}
+      {(caseStudy || quality) && (
+        <div className="dm-grid-hair [grid-template-columns:repeat(auto-fit,minmax(200px,1fr))]">
+          {(caseStudy?.portfolio.metrics ?? []).slice(0, 3).map((metric) => (
+            <Tile
+              key={`${metric.label}-${metric.value}`}
+              label={metric.label}
+              value={metric.value}
+              note={metric.evidence}
+            />
+          ))}
           {quality ? (
-            <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(quality.status)}`}>
-              {STATUS_LABEL[quality.status]}
-            </span>
+            <Tile
+              label="Gate"
+              value={STATUS_LABEL[quality.status]}
+              note={`${checkCounts.pass} pass · ${checkCounts.degraded} degraded · ${checkCounts.fail} fail`}
+              tone={quality.status}
+            />
           ) : null}
         </div>
+      )}
 
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         {quality ? (
-          <>
-            <div className="mt-4">
-              <div className="mb-2 flex items-center justify-between text-xs text-zinc-500">
-                <span>Quality mix</span>
-                <span>{checkCounts.total} checks</span>
-              </div>
-              <div className="flex h-2 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
-                <span
-                  className="bg-emerald-500"
-                  style={{ width: pct(checkCounts.pass, checkCounts.total) }}
-                />
-                <span
-                  className="bg-amber-400"
-                  style={{ width: pct(checkCounts.degraded, checkCounts.total) }}
-                />
-                <span
-                  className="bg-red-500"
-                  style={{ width: pct(checkCounts.fail, checkCounts.total) }}
-                />
-              </div>
-              <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
-                <Metric label="Pass" value={checkCounts.pass} tone="text-emerald-700 dark:text-emerald-300" />
-                <Metric label="Degraded" value={checkCounts.degraded} tone="text-amber-700 dark:text-amber-300" />
-                <Metric label="Fail" value={checkCounts.fail} tone="text-red-700 dark:text-red-300" />
-              </div>
+          <div className="dm-card min-w-0 overflow-hidden">
+            <div className="flex items-center gap-3 border-b border-line px-6 py-5">
+              <span className="dm-label">Quality gate</span>
+              <span className="ml-auto font-mono text-[11px] text-fg-faint">
+                {checkCounts.total} checks
+              </span>
             </div>
-
-            <div className="mt-4 space-y-2">
-              {quality.checks.slice(0, 5).map((check) => (
-                <div
-                  key={check.id}
-                  className="rounded-md border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-950/70"
+            {quality.checks.map((check) => (
+              <div
+                key={check.id}
+                className="flex items-start gap-3.5 border-b border-white/[.05] px-6 py-4 last:border-b-0"
+              >
+                <span
+                  aria-hidden
+                  className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${dotClass(check.status)}`}
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[14.5px]">{check.label}</span>
+                  <span className="mt-0.5 block text-[12.5px] leading-[1.55] text-fg-muted">
+                    {check.detail}
+                  </span>
+                </span>
+                <span
+                  className={`shrink-0 font-mono text-[11px] uppercase tracking-[.12em] ${textClass(
+                    check.status,
+                  )}`}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{check.label}</p>
-                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${statusClass(check.status)}`}>
-                      {STATUS_LABEL[check.status]}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs leading-5 text-zinc-600 dark:text-zinc-400">{check.detail}</p>
-                </div>
-              ))}
-            </div>
-
+                  {STATUS_LABEL[check.status]}
+                </span>
+              </div>
+            ))}
             {quality.recommendations.length > 0 ? (
-              <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/70 dark:bg-amber-950/30">
-                <h4 className="text-xs font-semibold uppercase tracking-[0.14em] text-amber-800 dark:text-amber-300">
-                  Next refinements
-                </h4>
-                <ul className="mt-2 space-y-1 text-xs leading-5 text-amber-900 dark:text-amber-200">
+              <div className="border-t border-warn/25 bg-warn/[.07] px-6 py-5">
+                <span className="font-mono text-[11px] tracking-label text-warn">
+                  NEXT REFINEMENTS
+                </span>
+                <ul className="m-0 mt-2.5 list-none space-y-1.5 p-0 text-[13px] leading-[1.6] text-[#D8C9A6]">
                   {quality.recommendations.slice(0, 3).map((recommendation) => (
                     <li key={recommendation}>{recommendation}</li>
                   ))}
                 </ul>
               </div>
             ) : null}
-          </>
+          </div>
         ) : null}
 
-        {loaded.error ? (
-          <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/70 dark:bg-red-950/50 dark:text-red-300">
-            {loaded.error}
-          </p>
+        {caseStudy ? (
+          <div className="dm-card flex min-w-0 flex-col gap-4 p-6">
+            <div className="flex items-center gap-3">
+              <span className="dm-label">Case export preview</span>
+              <span className="ml-auto font-mono text-[11px] text-fg-faint">
+                {caseStudy.schemaVersion.split(".").pop()}
+              </span>
+            </div>
+            <p
+              data-testid="case-export-title"
+              className="m-0 break-words font-display text-[26px] leading-[1.3] tracking-[-.01em]"
+            >
+              {caseStudy.portfolio.title}
+            </p>
+            <p className="m-0 text-[14px] leading-[1.65] text-fg-muted">
+              {caseStudy.portfolio.description}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {caseStudy.portfolio.techStack.slice(0, 10).map((tech) => (
+                <span
+                  key={tech}
+                  className="rounded-pill border border-white/[.12] px-3 py-1.5 font-mono text-[11px] text-fg-muted"
+                >
+                  {tech}
+                </span>
+              ))}
+            </div>
+            <p className="m-0 font-mono text-[11px] text-fg-faint">
+              {caseStudy.portfolio.media.length} media assets prepared for publishing
+            </p>
+          </div>
+        ) : loaded.loading ? (
+          <div className="dm-card p-6 text-[13.5px] text-fg-faint">Loading case export preview…</div>
         ) : null}
       </div>
-
-      {caseStudy ? (
-        <div className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-zinc-500">
-                Case export preview
-              </h3>
-              <p
-                data-testid="case-export-title"
-                className="mt-2 break-words text-lg font-semibold tracking-tight text-zinc-950 dark:text-zinc-50"
-              >
-                {caseStudy.portfolio.title}
-              </p>
-            </div>
-            <span className="shrink-0 rounded-full bg-sky-100 px-2.5 py-1 text-xs font-medium text-sky-800 dark:bg-sky-500/15 dark:text-sky-300">
-              v1
-            </span>
-          </div>
-          <p className="mt-3 text-sm leading-6 text-zinc-600 dark:text-zinc-400">
-            {caseStudy.portfolio.description}
-          </p>
-
-          <dl className="mt-4 grid gap-2 sm:grid-cols-2">
-            {caseStudy.portfolio.metrics.slice(0, 4).map((metric) => (
-              <div
-                key={`${metric.label}-${metric.value}`}
-                className="rounded-md border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-950/70"
-              >
-                <dt className="text-xs font-medium uppercase tracking-[0.12em] text-zinc-500">
-                  {metric.label}
-                </dt>
-                <dd className="mt-1 text-sm font-semibold text-zinc-950 dark:text-zinc-50">
-                  {metric.value}
-                </dd>
-              </div>
-            ))}
-          </dl>
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            {caseStudy.portfolio.techStack.slice(0, 8).map((tech) => (
-              <span
-                key={tech}
-                className="rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-xs font-medium text-zinc-700 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-300"
-              >
-                {tech}
-              </span>
-            ))}
-          </div>
-
-          <div className="mt-4 rounded-md border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-950/70 dark:text-zinc-400">
-            {caseStudy.portfolio.media.length} media assets prepared for publishing.
-          </div>
-        </div>
-      ) : loaded.loading ? (
-        <div className="rounded-lg border border-zinc-200 bg-white p-4 text-sm text-zinc-500 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          Loading case export preview...
-        </div>
-      ) : null}
     </section>
+  );
+}
+
+function Tile({
+  label,
+  value,
+  note,
+  tone,
+}: {
+  label: string;
+  value: string;
+  note: string;
+  tone?: QualityReport["status"];
+}) {
+  return (
+    <div className="flex flex-col gap-2 px-6 py-5">
+      <span className="font-mono text-[10.5px] uppercase tracking-label text-fg-faint">{label}</span>
+      <span className={`font-display text-[38px] leading-none ${tone ? textClass(tone) : "text-fg"}`}>
+        {value}
+      </span>
+      <span className="text-[12.5px] leading-[1.5] text-fg-muted">{note}</span>
+    </div>
   );
 }
 
@@ -230,27 +234,35 @@ function fileUrl(runId: string, path: string) {
   return `/api/runs/${runId}/files/${encodeURIComponent(path)}`;
 }
 
-function pct(value: number, total: number) {
-  if (total <= 0) return "0%";
-  return `${Math.round((value / total) * 100)}%`;
-}
-
 function statusClass(status: QualityReport["status"]) {
   switch (status) {
     case "pass":
-      return "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300";
+      return "border-accent/30 bg-accent/10 text-accent";
     case "degraded":
-      return "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300";
+      return "border-warn/30 bg-warn/10 text-warn";
     case "fail":
-      return "bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-300";
+      return "border-fail/30 bg-fail/10 text-fail";
   }
 }
 
-function Metric({ label, value, tone }: { label: string; value: number; tone: string }) {
-  return (
-    <div className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-2 dark:border-zinc-800 dark:bg-zinc-950/70">
-      <div className={`text-lg font-semibold ${tone}`}>{value}</div>
-      <div className="mt-0.5 text-[11px] uppercase tracking-[0.12em] text-zinc-500">{label}</div>
-    </div>
-  );
+function dotClass(status: QualityReport["status"]) {
+  switch (status) {
+    case "pass":
+      return "bg-accent";
+    case "degraded":
+      return "bg-warn";
+    case "fail":
+      return "bg-fail";
+  }
+}
+
+function textClass(status: QualityReport["status"]) {
+  switch (status) {
+    case "pass":
+      return "text-accent";
+    case "degraded":
+      return "text-warn";
+    case "fail":
+      return "text-fail";
+  }
 }
