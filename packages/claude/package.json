@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.65.0",
-    "@flyvendedk799/ai-auth": "github:Flyvendedk799/ai-auth",
+    "@flyvendedk799/ai-auth": "git+https://github.com/Flyvendedk799/ai-auth.git",
     "@doceomenter/shared": "workspace:*",
     "zod": "3.25.76"
   },
