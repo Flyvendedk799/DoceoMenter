@@ -19,6 +19,11 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      - name: Fetch git dependencies over https
+        # `@flyvendedk799/ai-auth` is installed from git, and pnpm resolves a GitHub
+        # dependency to an ssh URL whenever ssh looks available. A runner has no key, so
+        # the clone fails with "Permission denied (publickey)" on a public repository.
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
       - name: Install
         run: pnpm install --frozen-lockfile=false
       - name: Build packages
@@ -64,6 +69,11 @@ jobs:
         with: { version: 10.33.0 }
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
+      - name: Fetch git dependencies over https
+        # `@flyvendedk799/ai-auth` is installed from git, and pnpm resolves a GitHub
+        # dependency to an ssh URL whenever ssh looks available. A runner has no key, so
+        # the clone fails with "Permission denied (publickey)" on a public repository.
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
       - run: pnpm install --frozen-lockfile=false
       - name: Install Playwright browsers
         env: { PLAYWRIGHT_BROWSERS_PATH: ~/.cache/ms-playwright }

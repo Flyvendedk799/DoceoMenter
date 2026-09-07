@@ -17,7 +17,10 @@ COPY tsconfig.base.json ./
 COPY packages packages
 COPY apps/worker apps/worker
 
-RUN pnpm install --frozen-lockfile=false
+# `@flyvendedk799/ai-auth` comes from git, and pnpm reaches for ssh when resolving a GitHub
+# dependency. An image has no key, so rewrite it to the anonymous https clone.
+RUN git config --global url."https://github.com/".insteadOf "git@github.com:" \
+ && pnpm install --frozen-lockfile=false
 
 # Install Playwright browsers
 RUN pnpm --filter @doceomenter/capture exec playwright install --with-deps chromium

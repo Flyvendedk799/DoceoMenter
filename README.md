@@ -99,6 +99,12 @@ product all work with nothing configured. A subscription provider does not: it f
 message saying what to connect, because quietly returning fixtures for a run someone asked their
 own plan to pay for would be a lie about where the output came from.
 
+`ai-auth` is installed from git (`git+https://github.com/Flyvendedk799/ai-auth.git`), which
+means two things worth knowing: pnpm has to run the package's own `prepare` build, allowed by
+the `onlyBuiltDependencies` entry in `pnpm-workspace.yaml`, and an environment with no GitHub ssh
+key needs `git config --global url."https://github.com/".insteadOf "git@github.com:"` — CI and
+both Dockerfiles set it.
+
 ### Self-hosting notes
 
 - Set **`DOCEOMENTER_SECRET_KEY`** as soon as the web app and the worker are separate processes.

@@ -14,7 +14,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@flyvendedk799/ai-auth": "github:Flyvendedk799/ai-auth"
+    "@flyvendedk799/ai-auth": "git+https://github.com/Flyvendedk799/ai-auth.git"
   },
   "devDependencies": {
     "@types/node": "22.9.0",
