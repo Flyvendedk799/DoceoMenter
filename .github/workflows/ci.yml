@@ -24,6 +24,7 @@ jobs:
       - name: Build packages
         run: |
           pnpm --filter @doceomenter/shared build
+          pnpm --filter @doceomenter/auth build
           pnpm --filter @doceomenter/claude build
           pnpm --filter @doceomenter/boot build
           pnpm --filter @doceomenter/capture build
@@ -37,6 +38,7 @@ jobs:
         run: |
           pnpm --filter @doceomenter/capture exec playwright install --with-deps chromium
           pnpm --filter @doceomenter/shared test
+          pnpm --filter @doceomenter/auth test
           pnpm --filter @doceomenter/claude test
           pnpm --filter @doceomenter/boot test
           pnpm --filter @doceomenter/capture test
@@ -69,6 +71,7 @@ jobs:
       - name: Build packages
         run: |
           pnpm --filter @doceomenter/shared build
+          pnpm --filter @doceomenter/auth build
           pnpm --filter @doceomenter/claude build
           pnpm --filter @doceomenter/boot build
           pnpm --filter @doceomenter/capture build

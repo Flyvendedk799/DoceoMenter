@@ -4,6 +4,13 @@ import { boot, detectStrategy } from "@doceomenter/boot";
 import { postProcessAssets, runCapturePlan } from "@doceomenter/capture";
 import { createClaudeClient } from "@doceomenter/claude";
 import {
+  CredentialError,
+  describeProvider,
+  modelSpec,
+  resolveProviderCredential,
+  type ProviderCredential,
+} from "@doceomenter/auth";
+import {
   renderCaseStudyExport,
   renderDeck,
   renderMarkdown,
@@ -17,6 +24,7 @@ import {
   type Analysis,
   type CaptureManifest,
   type GeneratedContent,
+  type ResolvedRunSpec,
   type RunSpec,
   type RunState,
   type StageState,
@@ -33,6 +41,15 @@ export async function runPipeline(opts: {
   config: WorkerConfig;
   store: RunStore;
   bus: RunEventBus;
+  /**
+   * Whose credential to spend, from the signed cookie on the request that started the run.
+   *
+   * The id travels rather than the token. A subscription's access token is refreshed on the
+   * way out of the account store, so one handed over at enqueue time could easily be stale by
+   * the time a queued job reaches a worker — and a token in a job payload is a token sitting
+   * in Redis.
+   */
+  accountId?: string | null;
 }): Promise<RunState> {
   const { runId, spec, config, store, bus } = opts;
   const resolved = resolveRunSpec(spec);
@@ -117,23 +134,54 @@ export async function runPipeline(opts: {
     });
 
     // 3. AI provider — concept + plan
+    const descriptor = describeProvider(resolved.provider);
+    const credential = await resolveCredential({
+      provider: resolved.provider,
+      accountId: opts.accountId ?? null,
+      inlineKey: spec.apiKey,
+      log: (l, level) => void bus.log(runId, l, level),
+    });
+    const wire = descriptor.wire;
+    const configuredModel =
+      wire === "openai" ? config.OPENAI_MODEL_PRIMARY : config.ANTHROPIC_MODEL_PRIMARY;
+    // A requested model the registry does not know is still honoured — the catalogue is a
+    // convenience, not an allowlist, and a model that shipped this morning is not an error.
+    // One it *does* know, on the wrong wire, is: sending `gpt-5` to Anthropic can only 404.
+    const requestedWire = resolved.model ? modelSpec(resolved.model)?.wire : undefined;
+    const modelUsable = resolved.model !== undefined && requestedWire !== (wire === "openai" ? "anthropic" : "openai");
+    if (resolved.model && !modelUsable) {
+      await bus.log(
+        runId,
+        `[auth] ignoring model ${resolved.model}: it belongs to the ${requestedWire} wire, not ${wire}`,
+        "warn",
+      );
+    }
+    const modelPrimary = modelUsable ? resolved.model! : configuredModel;
+    const modelFallback =
+      wire === "openai" ? config.OPENAI_MODEL_FALLBACK : config.ANTHROPIC_MODEL_FALLBACK;
+
+    state.provider = {
+      id: resolved.provider,
+      label: descriptor.label,
+      source: credential?.source ?? "none",
+      model: credential ? modelPrimary : "fixture",
+      plan: credential && "plan" in credential ? credential.plan : null,
+      fixture: credential === null,
+    };
+    await store.write(runId, state);
+
     await setStage("draft-concept", {
       status: "running",
-      message: `${resolved.provider === "openai" ? "OpenAI" : "Claude"} concept + plan`,
+      message: credential
+        ? `${descriptor.label} concept + plan (${modelPrimary})`
+        : "concept + plan (fixture mode — no credential)",
     });
     const ai = createClaudeClient({
       provider: resolved.provider,
-      apiKey:
-        spec.apiKey ??
-        (resolved.provider === "openai" ? config.OPENAI_API_KEY : config.ANTHROPIC_API_KEY),
-      modelPrimary:
-        resolved.provider === "openai"
-          ? config.OPENAI_MODEL_PRIMARY
-          : config.ANTHROPIC_MODEL_PRIMARY,
-      modelFallback:
-        resolved.provider === "openai"
-          ? config.OPENAI_MODEL_FALLBACK
-          : config.ANTHROPIC_MODEL_FALLBACK,
+      ...(credential ? { credential } : { fixtureMode: true }),
+      modelPrimary,
+      modelFallback,
+      configureAt: "the provider panel",
       logger: (l) => void bus.log(runId, l),
     });
     const { concept, capturePlan } = await ai.draftConceptAndPlan(analysis, {
@@ -210,7 +258,7 @@ export async function runPipeline(opts: {
     // 7. AI provider — technical + captions + summary
     await setStage("draft-technical", {
       status: "running",
-      message: `${resolved.provider === "openai" ? "OpenAI" : "Claude"} technical pass`,
+      message: credential ? `${descriptor.label} technical pass` : "technical pass (fixture mode)",
     });
     const { technical, caseBrief, captions, summary } = await ai.draftTechnicalAndCaptions(
       analysis,
@@ -313,6 +361,40 @@ export async function runPipeline(opts: {
   } finally {
     if (timeoutHandle) clearTimeout(timeoutHandle);
     if (bootedKill) await bootedKill().catch(() => {});
+  }
+}
+
+/**
+ * The credential for this run, or null to mean "use fixtures".
+ *
+ * Fixture mode is not an error path and never has been: DoceoMenter runs its own tests, its
+ * own e2e and a first look at the product with no key configured anywhere, and a metered
+ * provider with nothing to spend is exactly that case. A *subscription* is different — the
+ * user picked a plan by name, and quietly generating fixtures instead would be a lie about
+ * whose work the output is — so a missing one fails the run with the message that says how to
+ * connect it.
+ */
+async function resolveCredential(opts: {
+  provider: ResolvedRunSpec["provider"];
+  accountId: string | null;
+  inlineKey?: string;
+  log: (line: string, level?: "info" | "warn") => void;
+}): Promise<ProviderCredential | null> {
+  try {
+    const credential = await resolveProviderCredential({
+      provider: opts.provider,
+      accountId: opts.accountId,
+      inlineKey: opts.inlineKey,
+    });
+    opts.log(`[auth] ${opts.provider} credential from ${credential.source}`);
+    return credential;
+  } catch (error) {
+    const descriptor = describeProvider(opts.provider);
+    if (error instanceof CredentialError && descriptor.kind === "key") {
+      opts.log(`[auth] ${error.message} Falling back to fixture mode.`, "warn");
+      return null;
+    }
+    throw error;
   }
 }
 

@@ -32,7 +32,10 @@ const config = {
             request === "execa" ||
             request === "bullmq" ||
             request === "ioredis" ||
-            (request && request.startsWith("@doceomenter/"))
+            // `@doceomenter/auth` is deliberately absent from this list: it is plain ESM with
+            // no native dependency, so webpack bundles it and the server build never has to
+            // `require()` an ES module.
+            (request && request.startsWith("@doceomenter/") && request !== "@doceomenter/auth")
           ) {
             return callback(null, "commonjs " + request);
           }

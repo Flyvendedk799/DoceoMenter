@@ -23,6 +23,7 @@ RUN pnpm install --frozen-lockfile=false
 RUN pnpm --filter @doceomenter/capture exec playwright install --with-deps chromium
 
 RUN pnpm --filter @doceomenter/shared build \
+ && pnpm --filter @doceomenter/auth build \
  && pnpm --filter @doceomenter/claude build \
  && pnpm --filter @doceomenter/boot build \
  && pnpm --filter @doceomenter/capture build \

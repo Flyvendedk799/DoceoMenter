@@ -1,13 +1,10 @@
 "use client";
 
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ProviderPanel, type ProviderChoice } from "./ProviderPanel";
 
 const URL_RE = /^https?:\/\/github\.com\/[^/]+\/[^/]+(?:\.git)?\/?$/;
-const PROVIDERS = [
-  { value: "claude", label: "Claude", caption: "Anthropic" },
-  { value: "openai", label: "OpenAI", caption: "GPT models" },
-] as const;
 
 const OUTPUT_STYLES = [
   { value: "concise", label: "Concise", caption: "Fast brief" },
@@ -22,29 +19,13 @@ export function UrlForm() {
   const [outputStyle, setOutputStyle] = useState<"concise" | "standard" | "deep">("standard");
   const [includeVideo, setIncludeVideo] = useState(true);
   const [bootApp, setBootApp] = useState(true);
-  const [provider, setProvider] = useState<"claude" | "openai">("claude");
-  const [apiKeys, setApiKeys] = useState<Record<"claude" | "openai", string>>({ claude: "", openai: "" });
+  // Opens on the metered provider because that is the one option that always *works*: with no
+  // key anywhere it degrades to the deterministic fixture client, so a first visit with nothing
+  // configured still produces a pack. The panel moves this to whatever is actually connected.
+  const [choice, setChoice] = useState<ProviderChoice>({ provider: "anthropic" });
   const [advanced, setAdvanced] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | undefined>();
-  const activeApiKey = apiKeys[provider];
-  const providerLabel = useMemo(() => PROVIDERS.find((p) => p.value === provider)?.label ?? "Provider", [provider]);
-
-  useEffect(() => {
-    const raw = window.localStorage.getItem("doceomenter.profile");
-    if (!raw) return;
-    try {
-      const profile = JSON.parse(raw) as { provider?: "claude" | "openai"; apiKeys?: Partial<Record<"claude" | "openai", string>> };
-      if (profile.provider === "claude" || profile.provider === "openai") setProvider(profile.provider);
-      setApiKeys((current) => ({ ...current, ...profile.apiKeys }));
-    } catch {
-      window.localStorage.removeItem("doceomenter.profile");
-    }
-  }, []);
-
-  useEffect(() => {
-    window.localStorage.setItem("doceomenter.profile", JSON.stringify({ provider, apiKeys }));
-  }, [provider, apiKeys]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -64,8 +45,8 @@ export function UrlForm() {
           outputStyle,
           includeVideo,
           bootApp,
-          provider,
-          apiKey: activeApiKey || undefined,
+          provider: choice.provider,
+          model: choice.model,
         }),
       });
       if (!res.ok) {
@@ -90,7 +71,7 @@ export function UrlForm() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">Onboarding</p>
-            <h2 className="mt-1 text-xl font-semibold tracking-tight">Repository intake + profile</h2>
+            <h2 className="mt-1 text-xl font-semibold tracking-tight">Repository intake + provider</h2>
           </div>
           <div className="flex flex-wrap gap-2 text-xs">
             <span className="rounded-full bg-sky-100 px-2.5 py-1 font-medium text-sky-800 dark:bg-sky-500/15 dark:text-sky-300">
@@ -102,48 +83,7 @@ export function UrlForm() {
           </div>
         </div>
 
-        <section className="rounded-md border border-emerald-200 bg-emerald-50/70 p-4 dark:border-emerald-900/60 dark:bg-emerald-950/20">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <h3 className="text-sm font-semibold text-emerald-950 dark:text-emerald-100">Your AI provider profile</h3>
-              <p className="mt-1 text-sm text-emerald-900/75 dark:text-emerald-200/75">
-                Choose Claude or OpenAI once, add your BYOK API key, and update it any time before starting a run. Keys are stored only in this browser profile and sent with the run request.
-              </p>
-            </div>
-            <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-emerald-800 shadow-sm dark:bg-emerald-500/10 dark:text-emerald-200">
-              Active: {providerLabel}
-            </span>
-          </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            {PROVIDERS.map((item) => (
-              <button
-                key={item.value}
-                type="button"
-                onClick={() => setProvider(item.value)}
-                aria-pressed={provider === item.value}
-                className={`rounded-md border px-3 py-3 text-left transition ${
-                  provider === item.value
-                    ? "border-emerald-500 bg-white text-emerald-950 shadow-sm dark:border-emerald-400 dark:bg-emerald-500/10 dark:text-emerald-100"
-                    : "border-emerald-200/80 bg-white/60 text-zinc-800 hover:border-emerald-300 dark:border-emerald-900 dark:bg-zinc-950/40 dark:text-zinc-200"
-                }`}
-              >
-                <span className="block text-sm font-semibold">{item.label}</span>
-                <span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">{item.caption}</span>
-              </button>
-            ))}
-          </div>
-          <label className="mt-4 flex flex-col gap-2">
-            <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">{providerLabel} API key</span>
-            <input
-              type="password"
-              autoComplete="off"
-              value={activeApiKey}
-              onChange={(e) => setApiKeys((current) => ({ ...current, [provider]: e.target.value }))}
-              placeholder={provider === "openai" ? "sk-..." : "sk-ant-..."}
-              className="h-10 rounded-md border border-zinc-300 bg-white px-3 font-mono text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 dark:border-zinc-700 dark:bg-zinc-900"
-            />
-          </label>
-        </section>
+        <ProviderPanel value={choice} onChange={setChoice} />
 
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
           <label className="min-w-0 space-y-2">
@@ -237,7 +177,9 @@ export function UrlForm() {
             </div>
 
             <div className="rounded-md border border-zinc-200 bg-white p-3 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400 sm:col-span-2">
-              Provider and API key live in your profile at the top of this form, so you can switch between Claude and OpenAI without opening advanced controls.
+              The provider, its credential and the model live in the panel at the top of this form.
+              Credentials stay on the server: a connected subscription and a stored key are both
+              encrypted at rest, and neither is ever sent back to this page.
             </div>
           </div>
         </details>

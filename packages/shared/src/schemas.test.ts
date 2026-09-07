@@ -6,6 +6,7 @@ import {
   ShotSchema,
   isValidRunId,
   redactSpec,
+  resolveRunSpec,
 } from "./schemas.js";
 
 describe("ShotIdSchema", () => {
@@ -78,5 +79,44 @@ describe("redactSpec", () => {
   it("is a no-op when there is no apiKey", () => {
     const spec = RunSpecSchema.parse({ url: "https://github.com/owner/repo" });
     expect(redactSpec(spec)).toBe(spec);
+  });
+});
+
+describe("provider selection", () => {
+  it("accepts each of the four ways of paying", () => {
+    for (const provider of ["anthropic", "claude-code", "openai", "codex"]) {
+      const spec = RunSpecSchema.parse({ url: "https://github.com/owner/repo", provider });
+      expect(spec.provider).toBe(provider);
+    }
+  });
+
+  it("still reads a run recorded before the split, as the key it meant", () => {
+    // "claude" predates the provider/wire distinction and meant an Anthropic API key. A run
+    // persisted then has to keep parsing, and has to keep meaning the same thing.
+    const spec = RunSpecSchema.parse({ url: "https://github.com/owner/repo", provider: "claude" });
+    expect(spec.provider).toBe("anthropic");
+  });
+
+  it("rejects a provider it does not know", () => {
+    expect(
+      RunSpecSchema.safeParse({ url: "https://github.com/owner/repo", provider: "gemini" }).success,
+    ).toBe(false);
+  });
+
+  it("defaults to the provider that works without any credential", () => {
+    const resolved = resolveRunSpec(RunSpecSchema.parse({ url: "https://github.com/owner/repo" }));
+    expect(resolved.provider).toBe("anthropic");
+    expect(resolved.model).toBeUndefined();
+  });
+
+  it("takes a model id but not a path or a shell fragment", () => {
+    expect(
+      RunSpecSchema.parse({ url: "https://github.com/owner/repo", model: "claude-opus-5" }).model,
+    ).toBe("claude-opus-5");
+    for (const model of ["../secrets", "claude opus", "a".repeat(65), ""]) {
+      expect(
+        RunSpecSchema.safeParse({ url: "https://github.com/owner/repo", model }).success,
+      ).toBe(false);
+    }
   });
 });

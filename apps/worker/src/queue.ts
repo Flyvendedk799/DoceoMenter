@@ -11,6 +11,13 @@ export const QUEUE_NAME = "doceomenter-runs";
 export type RunJobData = {
   runId: string;
   spec: RunSpec;
+  /**
+   * Whose credential the run may spend, from the signed cookie on the request that started it.
+   *
+   * An id rather than a token, deliberately: the worker resolves (and refreshes) the
+   * credential when it actually needs it, so nothing spendable is ever written to Redis.
+   */
+  accountId?: string;
 };
 
 export function createRedis(redisUrl: string, opts: Partial<RedisOptions> = {}): IORedis {
@@ -45,6 +52,7 @@ export function startWorker(): { worker: Worker; bus: RunEventBus; store: RunSto
       await runPipeline({
         runId: job.data.runId,
         spec: job.data.spec,
+        ...(job.data.accountId ? { accountId: job.data.accountId } : {}),
         config,
         store,
         bus,

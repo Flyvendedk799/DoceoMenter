@@ -8,11 +8,11 @@ import { QualitySummary } from "./QualitySummary";
 const STAGE_LABEL: Record<StageState["name"], string> = {
   clone: "Cloning repository",
   analyze: "Static analysis",
-  "draft-concept": "Claude — concept & vision draft",
+  "draft-concept": "Concept & vision draft",
   "detect-runtime": "Detecting project type",
   boot: "Booting project",
   capture: "Playwright capture (screenshots + video)",
-  "draft-technical": "Claude — technical write-up",
+  "draft-technical": "Technical write-up",
   "post-process": "Post-processing assets",
   "quality-check": "Quality gate + case export",
   render: "Rendering Markdown / HTML / PDF",
@@ -95,6 +95,18 @@ export function RunProgress({ initial }: { initial: RunState }) {
           <RunMeta label="Depth" value={state.spec.outputStyle ?? "standard"} />
           <RunMeta label="Media" value={state.spec.includeVideo === false ? "Screenshots" : "Screenshots + video"} />
           <RunMeta label="Updated" value={formatStamp(state.updatedAt)} />
+          {state.provider && (
+            <RunMeta
+              label="Paid for by"
+              value={
+                state.provider.fixture
+                  ? "Fixtures — no credential configured"
+                  : `${state.provider.label} · ${state.provider.model}${
+                      state.provider.plan ? ` · ${state.provider.plan}` : ""
+                    }`
+              }
+            />
+          )}
         </dl>
 
         <div className="mt-5">
