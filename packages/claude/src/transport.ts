@@ -436,16 +436,13 @@ function geminiTransport(options: TransportOptions): Transport {
   let model = options.modelPrimary;
 
   const cli = subscription
-    ? antigravityCliOptions(
-        {
-          accessToken: (credential as { accessToken: string }).accessToken,
-          projectId: (credential as { projectId: string | null }).projectId,
-          refreshToken: null,
-          expiresAt: 0,
-          email: null,
-        },
-        ANTIGRAVITY_CODE_ASSIST_BASE_URL,
-      )
+    ? antigravityCliOptions({
+        accessToken: (credential as { accessToken: string }).accessToken,
+        projectId: (credential as { projectId: string | null }).projectId,
+        refreshToken: null,
+        expiresAt: 0,
+        email: null,
+      })
     : antigravityKeyOptions((credential as { key: string }).key);
 
   return {
