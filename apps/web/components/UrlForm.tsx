@@ -39,6 +39,7 @@ export function UrlForm() {
     try {
       const res = await fetch("/api/runs", {
         method: "POST",
+        credentials: "same-origin",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           url: url.trim(),
