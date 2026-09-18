@@ -33,7 +33,7 @@ importers:
         specifier: workspace:*
         version: link:../worker
       '@flyvendedk799/ai-auth':
-        specifier: git+https://github.com/Flyvendedk799/ai-auth.git
+        specifier: github:Flyvendedk799/ai-auth#main
         version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/9f85a46de06543e71080b4b57d0a85fed1d8658e(react@18.3.1)
       bullmq:
         specifier: 5.34.10
@@ -128,7 +128,7 @@ importers:
   packages/auth:
     dependencies:
       '@flyvendedk799/ai-auth':
-        specifier: git+https://github.com/Flyvendedk799/ai-auth.git
+        specifier: github:Flyvendedk799/ai-auth#main
         version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/9f85a46de06543e71080b4b57d0a85fed1d8658e(react@18.3.1)
     devDependencies:
       '@types/node':
@@ -191,7 +191,7 @@ importers:
         specifier: workspace:*
         version: link:../shared
       '@flyvendedk799/ai-auth':
-        specifier: git+https://github.com/Flyvendedk799/ai-auth.git
+        specifier: github:Flyvendedk799/ai-auth#main
         version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/9f85a46de06543e71080b4b57d0a85fed1d8658e(react@18.3.1)
       zod:
         specifier: 3.25.76

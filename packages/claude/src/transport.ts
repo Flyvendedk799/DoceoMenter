@@ -21,8 +21,8 @@ import {
   anthropicKeyOptions,
   anthropicSubscriptionOptions,
   codexOptions,
-  geminiCliOptions,
-  geminiKeyOptions,
+  antigravityCliOptions,
+  antigravityKeyOptions,
   withClaudeCodeIdentity,
 } from "@flyvendedk799/ai-auth";
 import { describeProviderError, providerErrorFacts, type ProviderId } from "@flyvendedk799/ai-auth/registry";
@@ -422,7 +422,7 @@ const GEMINI_REFUSAL_REASONS = new Set(["SAFETY", "RECITATION", "PROHIBITED_CONT
  * A subscription does not bill against the public `generativelanguage.googleapis.com`; it
  * routes to Google's internal Cloud Code Assist endpoint, wrapping the same request shape in
  * `{ model, project, request: { ... } }`. `ANTIGRAVITY_CODE_ASSIST_BASE_URL` overrides
- * `geminiCliOptions`'s own default (`cloudcode-pa.googleapis.com`) because a real Antigravity
+ * `antigravityCliOptions`'s own default (`cloudcode-pa.googleapis.com`) because a real Antigravity
  * CLI login was watched making these calls against `daily-cloudcode-pa.googleapis.com`
  * instead — see `geminiOAuth.ts`'s header for how that credential was obtained. The metered
  * key speaks the ordinary, documented `v1beta` endpoint instead, unaffected by any of this.
@@ -436,7 +436,7 @@ function geminiTransport(options: TransportOptions): Transport {
   let model = options.modelPrimary;
 
   const cli = subscription
-    ? geminiCliOptions(
+    ? antigravityCliOptions(
         {
           accessToken: (credential as { accessToken: string }).accessToken,
           projectId: (credential as { projectId: string | null }).projectId,
@@ -446,7 +446,7 @@ function geminiTransport(options: TransportOptions): Transport {
         },
         ANTIGRAVITY_CODE_ASSIST_BASE_URL,
       )
-    : geminiKeyOptions((credential as { key: string }).key);
+    : antigravityKeyOptions((credential as { key: string }).key);
 
   return {
     provider: options.provider,
@@ -473,7 +473,7 @@ function geminiTransport(options: TransportOptions): Transport {
             const response = subscription
               ? await doFetch(`${cli.baseURL}:generateContent`, {
                   method: "POST",
-                  // `geminiCliOptions` already set `Authorization`, `Content-Type` and, when a
+                  // `antigravityCliOptions` already set `Authorization`, `Content-Type` and, when a
                   // project is on the identity, `x-goog-user-project` — nothing to add here.
                   headers: cli.defaultHeaders ?? {},
                   body: JSON.stringify({
@@ -605,3 +605,4 @@ async function throwForStatus(response: Response, label: string): Promise<void> 
   }
   throw error;
 }
+
