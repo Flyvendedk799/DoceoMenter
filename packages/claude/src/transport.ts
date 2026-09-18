@@ -537,6 +537,10 @@ function sanitizeGeminiSchema(schema: any): any {
     if (constVal !== undefined) {
       sanitized.enum = [constVal];
     }
+    if (Array.isArray(sanitized.enum) && sanitized.enum.some((e: any) => typeof e !== 'string')) {
+      sanitized.description = (sanitized.description ? sanitized.description + " " : "") + "Allowed values: " + sanitized.enum.join(", ");
+      delete sanitized.enum;
+    }
     return sanitized;
   }
   return schema;
