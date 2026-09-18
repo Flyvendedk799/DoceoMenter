@@ -1,10 +1,11 @@
 /**
- * The four ways a run can be paid for.
+ * The six ways a run can be paid for.
  *
  * `ai-auth` splits a provider from the wire it speaks — `claude-code` and `anthropic` both
  * talk to the Messages API, but only one of them bills a card — and that split is exactly the
  * distinction this app needs to show a user. Two entries per wire is not duplication in the
- * picker; it is the whole question the picker exists to ask.
+ * picker; it is the whole question the picker exists to ask. `gemini-cli` and `gemini` repeat
+ * the same split a third time, on Google's wire.
  */
 
 import { isSubscription, wireOf, type ProviderId } from "@flyvendedk799/ai-auth/registry";
@@ -14,7 +15,7 @@ export type ProviderDescriptor = {
   label: string;
   /** One line, written for the person choosing. */
   blurb: string;
-  wire: "anthropic" | "openai";
+  wire: "anthropic" | "openai" | "gemini";
   kind: "subscription" | "key";
   /** Default model ids, as registry ids. Overridable per deployment through the worker env. */
   defaults: { primary: string; fallback: string };
@@ -52,6 +53,22 @@ export const PROVIDERS: readonly ProviderDescriptor[] = [
     wire: "openai",
     kind: "key",
     defaults: { primary: "gpt-5", fallback: "gpt-5-mini" },
+  },
+  {
+    id: "gemini-cli",
+    label: "Gemini subscription",
+    blurb: "Uses the `gemini` login already on this machine. Nothing to paste, nothing to store.",
+    wire: "gemini",
+    kind: "subscription",
+    defaults: { primary: "gemini-3-pro", fallback: "gemini-3-flash" },
+  },
+  {
+    id: "gemini",
+    label: "Gemini API key",
+    blurb: "A metered key. Encrypted here, masked for display, never readable back out.",
+    wire: "gemini",
+    kind: "key",
+    defaults: { primary: "gemini-3-pro", fallback: "gemini-3-flash" },
   },
 ];
 

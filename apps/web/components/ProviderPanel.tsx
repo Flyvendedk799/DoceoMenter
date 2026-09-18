@@ -15,9 +15,9 @@ const PREFERENCE_KEY = "doceomenter.provider";
 export type ProviderChoice = { provider: AiProvider; model?: string };
 
 /**
- * Which of the four ways of paying this run should use.
+ * Which of the six ways of paying this run should use.
  *
- * The panel shows all four whether or not they are configured, because the interesting fact
+ * The panel shows all six whether or not they are configured, because the interesting fact
  * about a provider is usually *why* it is unavailable — a Claude plan that needs connecting
  * and an OpenAI key that was never pasted are one click and one paste away respectively, and a
  * picker that hides them just leaves someone wondering where the option went.
@@ -181,6 +181,10 @@ export function ProviderPanel({
             <CodexNote status={selected} localCliEnabled={status?.localCliEnabled ?? false} />
           )}
 
+          {selected.id === "gemini-cli" && (
+            <GeminiNote status={selected} localCliEnabled={status?.localCliEnabled ?? false} />
+          )}
+
           {selected.kind === "key" && <KeyField provider={selected} onSaved={(next) => setStatus(next)} />}
 
           <ModelPicker
@@ -213,6 +217,18 @@ function CodexNote({ status, localCliEnabled }: { status: ProviderStatus; localC
         : status.ready
           ? "Using the `codex` login already on the machine hosting DoceoMenter. Nothing is stored here — the credential is re-read each time, and the CLI keeps it current."
           : "No `codex` login found on the machine hosting DoceoMenter. Run `codex` there and sign in with your ChatGPT account, then reload this page."}
+    </p>
+  );
+}
+
+function GeminiNote({ status, localCliEnabled }: { status: ProviderStatus; localCliEnabled: boolean }) {
+  return (
+    <p className="dm-well rounded-sm px-3.5 py-3 text-[12.5px] leading-[1.65] text-fg-muted">
+      {!localCliEnabled
+        ? "Machine logins are disabled on this deployment (ALLOW_LOCAL_CLI=false), so Gemini is unavailable here."
+        : status.ready
+          ? "Using the `gemini` login already on the machine hosting DoceoMenter. Nothing is stored here — the credential is re-read each time, and the CLI keeps it current."
+          : "No `gemini` login found on the machine hosting DoceoMenter. Run `gemini` there, choose \"Sign in with Google\", then reload this page."}
     </p>
   );
 }
@@ -274,7 +290,9 @@ function KeyField({
             autoComplete="off"
             value={key}
             onChange={(e) => setKey(e.target.value)}
-            placeholder={provider.wire === "openai" ? "sk-..." : "sk-ant-..."}
+            placeholder={
+              provider.wire === "openai" ? "sk-..." : provider.wire === "gemini" ? "AIza..." : "sk-ant-..."
+            }
             className="dm-input h-11 min-w-0 flex-1 text-[13px]"
           />
           <button

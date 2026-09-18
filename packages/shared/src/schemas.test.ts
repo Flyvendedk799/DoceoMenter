@@ -83,8 +83,8 @@ describe("redactSpec", () => {
 });
 
 describe("provider selection", () => {
-  it("accepts each of the four ways of paying", () => {
-    for (const provider of ["anthropic", "claude-code", "openai", "codex"]) {
+  it("accepts each of the six ways of paying", () => {
+    for (const provider of ["anthropic", "claude-code", "openai", "codex", "gemini", "gemini-cli"]) {
       const spec = RunSpecSchema.parse({ url: "https://github.com/owner/repo", provider });
       expect(spec.provider).toBe(provider);
     }
@@ -99,7 +99,7 @@ describe("provider selection", () => {
 
   it("rejects a provider it does not know", () => {
     expect(
-      RunSpecSchema.safeParse({ url: "https://github.com/owner/repo", provider: "gemini" }).success,
+      RunSpecSchema.safeParse({ url: "https://github.com/owner/repo", provider: "mistral" }).success,
     ).toBe(false);
   });
 

@@ -22,7 +22,14 @@ export const GitRefSchema = z
  * `"claude"` is the id this app used before the two were distinguished, and it meant an
  * Anthropic API key. Runs persisted then still parse, as that.
  */
-export const AI_PROVIDERS = ["anthropic", "claude-code", "openai", "codex"] as const;
+export const AI_PROVIDERS = [
+  "anthropic",
+  "claude-code",
+  "openai",
+  "codex",
+  "gemini",
+  "gemini-cli",
+] as const;
 export const AiProviderSchema = z.preprocess(
   (value) => (value === "claude" ? "anthropic" : value),
   z.enum(AI_PROVIDERS),

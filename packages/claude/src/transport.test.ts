@@ -268,3 +268,94 @@ describe("openai wire", () => {
     expect(input).toContainEqual({ type: "function_call_output", call_id: "fc_1", output: "received" });
   });
 });
+
+describe("gemini wire", () => {
+  it("uses the public v1beta endpoint for a metered key", async () => {
+    const { calls, impl } = recorder([
+      {
+        body: {
+          candidates: [
+            {
+              content: {
+                role: "model",
+                parts: [{ functionCall: { name: "submit_thing", args: { ok: true } } }],
+              },
+              finishReason: "STOP",
+            },
+          ],
+        },
+      },
+    ]);
+    const transport = transportFor({ kind: "key", wire: "gemini", key: "AIza-key" }, impl, {
+      provider: "gemini",
+      modelPrimary: "gemini-3-pro",
+      modelFallback: "gemini-3-flash",
+    });
+
+    const turn = await transport.start(SYSTEM, [TOOL], 1000).ask("go");
+
+    expect(calls[0]!.url).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro:generateContent",
+    );
+    expect(calls[0]!.headers["x-goog-api-key"]).toBe("AIza-key");
+    expect(calls[0]!.body.tools[0].functionDeclarations[0].name).toBe("submit_thing");
+    expect(turn.calls).toEqual([{ id: "submit_thing", name: "submit_thing", input: { ok: true } }]);
+  });
+
+  it("uses the internal Cloud Code endpoint, with the project header, for a Gemini CLI subscription", async () => {
+    const { calls, impl } = recorder([
+      {
+        body: {
+          response: {
+            candidates: [
+              {
+                content: {
+                  role: "model",
+                  parts: [{ functionCall: { name: "submit_thing", args: { ok: true } } }],
+                },
+                finishReason: "STOP",
+              },
+            ],
+          },
+        },
+      },
+      {
+        body: {
+          response: {
+            candidates: [
+              {
+                content: { role: "model", parts: [{ functionCall: { name: "submit_thing", args: {} } }] },
+                finishReason: "STOP",
+              },
+            ],
+          },
+        },
+      },
+    ]);
+    const transport = transportFor(
+      { kind: "subscription", wire: "gemini", accessToken: "gcli-token", projectId: "my-project" },
+      impl,
+      { provider: "gemini-cli", modelPrimary: "gemini-3-pro", modelFallback: "gemini-3-flash" },
+    );
+    const conversation = transport.start(SYSTEM, [TOOL], 1000);
+
+    const turn = await conversation.ask("go");
+    await conversation.ask("again");
+
+    expect(calls[0]!.url).toBe("https://cloudcode-pa.googleapis.com/v1internal:generateContent");
+    // Without the project header the internal endpoint cannot tell which Cloud project to bill.
+    expect(calls[0]!.headers.authorization).toBe("Bearer gcli-token");
+    expect(calls[0]!.headers["x-goog-user-project"]).toBe("my-project");
+    expect(calls[0]!.body.project).toBe("my-project");
+    expect(calls[0]!.body.request.tools[0].functionDeclarations[0].name).toBe("submit_thing");
+    expect(turn.calls).toEqual([{ id: "submit_thing", name: "submit_thing", input: { ok: true } }]);
+
+    // The second turn has to answer the first turn's call — correlated by name, since Gemini's
+    // functionResponse carries no call id the way the other two wires do.
+    const contents = calls[1]!.body.request.contents;
+    expect(contents).toContainEqual({
+      role: "user",
+      parts: [{ functionResponse: { name: "submit_thing", response: { result: "received" } } }],
+    });
+  });
+});

@@ -1,18 +1,19 @@
 /**
- * One conversation, three wires.
+ * One conversation, four wires.
  *
  * The generation loop above this file is the same whichever provider is paying: send a prompt,
  * collect tool calls, and if a required one is missing or malformed, answer every call that
  * was made and say precisely what to fix. What differs between providers is only the shape of
  * those three things on the wire — and, for a subscription, a handful of details that are each
  * individually tiny and each cost a day to find out. Those live here so the loop never has to
- * know which of the four ways of paying is in play.
+ * know which of the six ways of paying is in play.
  *
  * The conversation owns its own history rather than being handed one, because the repair turn
  * is where the wires disagree most: Anthropic wants the assistant's blocks echoed back with a
  * `tool_result` for every `tool_use`, Chat Completions wants the message plus one `tool` role
- * per call, and the Responses API wants the output items plus a `function_call_output` for
- * each. All three refuse the request outright if an answer is missing — see trap #3.
+ * per call, the Responses API wants the output items plus a `function_call_output` for each,
+ * and Gemini wants a `functionResponse` part keyed by name rather than by call id. All four
+ * refuse the request outright if an answer is missing — see trap #3.
  */
 
 import Anthropic from "@anthropic-ai/sdk";
@@ -20,6 +21,8 @@ import {
   anthropicKeyOptions,
   anthropicSubscriptionOptions,
   codexOptions,
+  geminiCliOptions,
+  geminiKeyOptions,
   withClaudeCodeIdentity,
 } from "@flyvendedk799/ai-auth";
 import { describeProviderError, providerErrorFacts, type ProviderId } from "@flyvendedk799/ai-auth/registry";
@@ -52,8 +55,10 @@ export type Transport = {
 export type WireCredential =
   | { kind: "key"; wire: "anthropic"; key: string }
   | { kind: "key"; wire: "openai"; key: string }
+  | { kind: "key"; wire: "gemini"; key: string }
   | { kind: "subscription"; wire: "anthropic"; token: string }
-  | { kind: "subscription"; wire: "openai"; accessToken: string; accountId: string | null };
+  | { kind: "subscription"; wire: "openai"; accessToken: string; accountId: string | null }
+  | { kind: "subscription"; wire: "gemini"; accessToken: string; projectId: string | null };
 
 export type TransportOptions = {
   provider: ProviderId;
@@ -93,11 +98,9 @@ export class ProviderCallError extends Error {
 }
 
 export function createTransport(options: TransportOptions): Transport {
-  return options.credential.wire === "anthropic"
-    ? anthropicTransport(options)
-    : options.credential.kind === "subscription"
-      ? codexTransport(options)
-      : openAiChatTransport(options);
+  if (options.credential.wire === "anthropic") return anthropicTransport(options);
+  if (options.credential.wire === "gemini") return geminiTransport(options);
+  return options.credential.kind === "subscription" ? codexTransport(options) : openAiChatTransport(options);
 }
 
 /**
@@ -396,7 +399,126 @@ function codexTransport(options: TransportOptions): Transport {
   };
 }
 
+// --- Gemini: a metered key, or a Google account subscription (Gemini CLI) ----------------
+
+type GeminiPart =
+  | { text: string }
+  | { functionCall: { name: string; args: unknown } }
+  | { functionResponse: { name: string; response: unknown } };
+
+type GeminiContent = { role: "user" | "model"; parts: GeminiPart[] };
+
+type GeminiCandidate = {
+  content?: { role?: string; parts?: GeminiPart[] };
+  finishReason?: string;
+};
+
+type GeminiGenerateResponse = { response?: { candidates?: GeminiCandidate[] }; candidates?: GeminiCandidate[] };
+
+/** finishReason values Google uses to say a response was blocked rather than merely stopped. */
+const GEMINI_REFUSAL_REASONS = new Set(["SAFETY", "RECITATION", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII"]);
+
+/**
+ * Gemini CLI's personal subscription does not bill against the public
+ * `generativelanguage.googleapis.com`; it routes to Google's internal Cloud Code endpoint, which
+ * wraps the same request shape in `{ model, project, request: { ... } }` — see `ai-auth`'s own
+ * notes on this. The metered key speaks the ordinary, documented `v1beta` endpoint instead.
+ */
+function geminiTransport(options: TransportOptions): Transport {
+  const credential = options.credential;
+  const subscription = credential.kind === "subscription";
+  const doFetch = options.fetchImpl ?? fetch;
+  let model = options.modelPrimary;
+
+  const cli = subscription
+    ? geminiCliOptions({
+        accessToken: (credential as { accessToken: string }).accessToken,
+        projectId: (credential as { projectId: string | null }).projectId,
+        refreshToken: null,
+        expiresAt: 0,
+        email: null,
+      })
+    : geminiKeyOptions((credential as { key: string }).key);
+
+  return {
+    provider: options.provider,
+    currentModel: () => model,
+    start(system, tools, maxTokens) {
+      const systemInstruction = { role: "system", parts: [{ text: system.map((b) => b.text).join("\n\n") }] };
+      const declarations = tools.map(toGeminiFunctionDeclaration);
+      const contents: GeminiContent[] = [];
+
+      return {
+        async ask(userText: string): Promise<Turn> {
+          contents.push({ role: "user", parts: [{ text: userText }] });
+
+          const generateRequest = {
+            contents,
+            systemInstruction,
+            tools: [{ functionDeclarations: declarations }],
+            toolConfig: { functionCallingConfig: { mode: "ANY" } },
+            generationConfig: { maxOutputTokens: maxTokens },
+          };
+
+          const json = await withFallback(options, (m) => (model = m), async (m) => {
+            const projectId = subscription ? (credential as { projectId: string | null }).projectId : null;
+            const response = subscription
+              ? await doFetch(`${cli.baseURL}:generateContent`, {
+                  method: "POST",
+                  // `geminiCliOptions` already set `Authorization`, `Content-Type` and, when a
+                  // project is on the identity, `x-goog-user-project` — nothing to add here.
+                  headers: cli.defaultHeaders ?? {},
+                  body: JSON.stringify({
+                    model: `models/${m}`,
+                    ...(projectId ? { project: projectId } : {}),
+                    request: generateRequest,
+                  }),
+                })
+              : await doFetch(`${cli.baseURL}/models/${m}:generateContent`, {
+                  method: "POST",
+                  headers: { "content-type": "application/json", "x-goog-api-key": cli.apiKey ?? "" },
+                  body: JSON.stringify(generateRequest),
+                });
+            await throwForStatus(response, "gemini");
+            return (await response.json()) as GeminiGenerateResponse;
+          });
+
+          const candidate = (json.response?.candidates ?? json.candidates ?? [])[0];
+          const parts = candidate?.content?.parts ?? [];
+
+          const calls: ToolCall[] = [];
+          for (const part of parts) {
+            if ("functionCall" in part && part.functionCall) {
+              calls.push({ id: part.functionCall.name, name: part.functionCall.name, input: part.functionCall.args });
+            }
+          }
+
+          // Correlated by name, not id — unlike the other two wires, Gemini's function response
+          // part carries no call id, only the name the call was made with.
+          if (parts.length > 0) contents.push({ role: "model", parts });
+          for (const call of calls) {
+            contents.push({
+              role: "user",
+              parts: [{ functionResponse: { name: call.name, response: { result: "received" } } }],
+            });
+          }
+
+          return {
+            calls,
+            truncated: candidate?.finishReason === "MAX_TOKENS",
+            refusal: !!candidate?.finishReason && GEMINI_REFUSAL_REASONS.has(candidate.finishReason),
+          };
+        },
+      };
+    },
+  };
+}
+
 // --- shared plumbing -----------------------------------------------------------------------
+
+function toGeminiFunctionDeclaration(tool: Tool) {
+  return { name: tool.name, description: tool.description, parameters: tool.input_schema };
+}
 
 function toFunctionTool(tool: Tool) {
   return {

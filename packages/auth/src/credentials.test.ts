@@ -54,6 +54,12 @@ describe("api key resolution", () => {
     expect(credential).toMatchObject({ key: "sk-from-env", source: "environment", wire: "openai" });
   });
 
+  it("resolves a Gemini key from the environment on the gemini wire", async () => {
+    const runtime = await runtimeIn({ GEMINI_API_KEY: "AIza-from-env" });
+    const credential = await resolveProviderCredential({ provider: "gemini", runtime });
+    expect(credential).toMatchObject({ key: "AIza-from-env", source: "environment", wire: "gemini" });
+  });
+
   it("fails with an actionable message when there is no key at all", async () => {
     const runtime = await runtimeIn({ ANTHROPIC_API_KEY: undefined, OPENAI_API_KEY: undefined });
     await expect(resolveProviderCredential({ provider: "openai", runtime })).rejects.toBeInstanceOf(
@@ -128,6 +134,13 @@ describe("claude subscription resolution", () => {
       resolveProviderCredential({ provider: "codex", runtime }),
     ).rejects.toThrow(/machine logins are disabled/);
   });
+
+  it("refuses gemini-cli when machine logins are disabled", async () => {
+    const runtime = await runtimeIn();
+    await expect(
+      resolveProviderCredential({ provider: "gemini-cli", runtime }),
+    ).rejects.toThrow(/machine logins are disabled/);
+  });
 });
 
 describe("status for the provider panel", () => {
@@ -152,6 +165,10 @@ describe("status for the provider panel", () => {
     expect(byId.anthropic).toMatchObject({ ready: false, source: "none", hint: null });
     // The picker needs the tier to be able to say "try a lighter model".
     expect(byId["claude-code"]?.models.some((m) => m.tier === "light")).toBe(true);
+    // Machine logins are off in this harness, so the Gemini subscription reports honestly
+    // unready rather than throwing — same posture as Codex.
+    expect(byId["gemini-cli"]).toMatchObject({ ready: false, source: "none" });
+    expect(byId["gemini-cli"]?.models.every((m) => m.wire === "gemini")).toBe(true);
   });
 
   it("says so when nothing can be stored", async () => {

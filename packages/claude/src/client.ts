@@ -86,6 +86,8 @@ const DEFAULT_MODELS: Record<AiProvider, { primary: string; fallback: string }> 
   "claude-code": { primary: "claude-opus-5", fallback: "claude-sonnet-5" },
   openai: { primary: "gpt-5", fallback: "gpt-5-mini" },
   codex: { primary: "gpt-5", fallback: "gpt-5-mini" },
+  gemini: { primary: "gemini-3-pro", fallback: "gemini-3-flash" },
+  "gemini-cli": { primary: "gemini-3-pro", fallback: "gemini-3-flash" },
 };
 
 export function createClaudeClient(opts: ClaudeClientOptions = {}): ClaudeClient {
@@ -119,7 +121,7 @@ export function createClaudeClient(opts: ClaudeClientOptions = {}): ClaudeClient
  * and then the environment — which is the last resort rather than the first, so an operator's
  * exported key never quietly outranks a credential the caller passed in.
  *
- * Null means "nothing to call with", and for the two metered providers that is the long-
+ * Null means "nothing to call with", and for the three metered providers that is the long-
  * standing fixture-mode signal rather than an error: DoceoMenter is expected to run its own
  * tests and its own demo without a key. A subscription provider has no such fallback — asking
  * for a plan and silently getting fixtures would be a lie — so it throws instead.
@@ -130,16 +132,16 @@ function resolveCredential(
 ): WireCredential | null {
   if (opts.credential) return opts.credential;
 
-  if (provider === "claude-code" || provider === "codex") {
+  if (provider === "claude-code" || provider === "codex" || provider === "gemini-cli") {
     throw new Error(
       `[${provider}] no credential was resolved. A subscription run needs a connected account or a machine login.`,
     );
   }
 
-  const wire = provider === "openai" ? "openai" : "anthropic";
-  const key =
-    opts.apiKey?.trim() ||
-    (wire === "openai" ? process.env.OPENAI_API_KEY : process.env.ANTHROPIC_API_KEY)?.trim();
+  const wire = provider === "openai" ? "openai" : provider === "gemini" ? "gemini" : "anthropic";
+  const envKey =
+    wire === "openai" ? process.env.OPENAI_API_KEY : wire === "gemini" ? process.env.GEMINI_API_KEY : process.env.ANTHROPIC_API_KEY;
+  const key = opts.apiKey?.trim() || envKey?.trim();
   return key ? { kind: "key", wire, key } : null;
 }
 
