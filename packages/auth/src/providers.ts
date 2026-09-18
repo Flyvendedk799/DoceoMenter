@@ -57,7 +57,7 @@ export const PROVIDERS: readonly ProviderDescriptor[] = [
   {
     id: "gemini-cli",
     label: "Gemini subscription",
-    blurb: "Uses the `gemini` login already on this machine. Nothing to paste, nothing to store.",
+    blurb: "Sign in with your Google account. Needs a Gemini Code Assist license on that account.",
     wire: "gemini",
     kind: "subscription",
     defaults: { primary: "gemini-3-pro", fallback: "gemini-3-flash" },

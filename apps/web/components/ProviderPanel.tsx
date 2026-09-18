@@ -89,7 +89,7 @@ export function ProviderPanel({
     window.localStorage.setItem(PREFERENCE_KEY, JSON.stringify(choice));
   };
 
-  const selected = status?.providers.find((p) => p.id === value.provider);
+  const selected = status?.providers?.find((p) => p.id === value.provider);
 
   // Report the selected credential upward so a collapsed disclosure can say what will be
   // charged without opening. Kept in a ref: the parent passes a setState and re-renders on
@@ -185,7 +185,7 @@ export function ProviderPanel({
             <GeminiConnect
               status={selected}
               localCliEnabled={status?.localCliEnabled ?? false}
-              onSaved={(next) => setStatus(next)}
+              onRefresh={() => void refresh()}
             />
           )}
 
@@ -236,11 +236,12 @@ function CodexNote({ status, localCliEnabled }: { status: ProviderStatus; localC
 function GeminiConnect({
   status,
   localCliEnabled,
-  onSaved,
+  onRefresh,
 }: {
   status: ProviderStatus;
   localCliEnabled: boolean;
-  onSaved: (status: AuthStatus) => void;
+  /** `/api/gemini/*` returns its own account status, not a full `AuthStatus` — re-fetch instead of setting it directly. */
+  onRefresh: () => void;
 }) {
   const [loginUrl, setLoginUrl] = useState<string | undefined>();
   const [code, setCode] = useState("");
@@ -272,9 +273,9 @@ function GeminiConnect({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ code: code.trim() }),
       });
-      const body = (await response.json().catch(() => ({}))) as AuthStatus & { message?: string };
+      const body = (await response.json().catch(() => ({}))) as { message?: string };
       if (!response.ok) throw new Error(body.message ?? `HTTP ${response.status}`);
-      onSaved(body);
+      onRefresh();
       setLoginUrl(undefined);
       setCode("");
     } catch (e) {
@@ -288,8 +289,7 @@ function GeminiConnect({
     setBusy(true);
     try {
       const response = await fetch("/api/gemini", { method: "DELETE", credentials: "same-origin" });
-      const body = (await response.json().catch(() => ({}))) as AuthStatus;
-      if (response.ok) onSaved(body);
+      if (response.ok) onRefresh();
     } finally {
       setBusy(false);
     }
@@ -305,7 +305,7 @@ function GeminiConnect({
         <button type="button" disabled={busy} onClick={() => void disconnect()} className="dm-btn-secondary h-10 px-4 text-[13px]">
           Disconnect
         </button>
-        <ProjectIdField status={status} onSaved={onSaved} />
+        <ProjectIdField status={status} onRefresh={onRefresh} />
         {note && <p className="font-mono text-[11px] text-fg-faint">{note}</p>}
       </div>
     );
@@ -381,7 +381,7 @@ function GeminiConnect({
  * token reveals it, so it is a value the account types in here rather than one DoceoMenter can
  * discover on its own.
  */
-function ProjectIdField({ status, onSaved }: { status: ProviderStatus; onSaved: (status: AuthStatus) => void }) {
+function ProjectIdField({ status, onRefresh }: { status: ProviderStatus; onRefresh: () => void }) {
   const [value, setValue] = useState(status.projectId ?? "");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | undefined>();
@@ -396,9 +396,9 @@ function ProjectIdField({ status, onSaved }: { status: ProviderStatus; onSaved: 
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ projectId: value.trim() || null }),
       });
-      const body = (await response.json().catch(() => ({}))) as AuthStatus & { message?: string };
+      const body = (await response.json().catch(() => ({}))) as { message?: string };
       if (!response.ok) throw new Error(body.message ?? `HTTP ${response.status}`);
-      onSaved(body);
+      onRefresh();
       setNote("Saved.");
     } catch (e) {
       setNote((e as Error).message);
