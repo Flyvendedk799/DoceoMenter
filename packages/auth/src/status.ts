@@ -8,7 +8,7 @@
  */
 
 import { modelsFor, type ModelSpec, type ProviderId } from "@flyvendedk799/ai-auth/registry";
-import { readLocalClaudeStatus, readLocalCodex, readLocalGemini } from "./credentials.js";
+import { readLocalClaudeStatus, readLocalCodex, readLocalGeminiStatus } from "./credentials.js";
 import { PROVIDERS, type ProviderDescriptor } from "./providers.js";
 import { getAuthRuntime, type AuthRuntime } from "./runtime.js";
 
@@ -19,10 +19,12 @@ export type ProviderStatus = Omit<ProviderDescriptor, "defaults"> & {
   source: "connected account" | "machine login" | "stored key" | "environment" | "none";
   /** `sk-ant-…9ZQ`, or null. Never the key. */
   hint: string | null;
-  /** The plan a subscription belongs to, when the provider says so. */
+  /** The plan a subscription belongs to, when the provider says so. For Gemini, the account's email instead — Google names no plan. */
   plan: string | null;
   /** True for a subscription whose access token has aged out. It refreshes on next use. */
   expired: boolean;
+  /** A GCP project id for a Gemini subscription, when the account's license needs one. */
+  projectId: string | null;
   models: ModelSpec[];
   defaultModel: string;
 };
@@ -49,11 +51,12 @@ export async function readAuthStatus(
     ? runtimeOrEnv
     : await getAuthRuntime(runtimeOrEnv as NodeJS.ProcessEnv | undefined);
 
-  const [claudeAccount, localClaude, localCodex, localGemini] = await Promise.all([
+  const [claudeAccount, geminiAccount, localClaude, localCodex, localGemini] = await Promise.all([
     accountId ? runtime.accounts.status(accountId) : Promise.resolve(null),
+    accountId ? runtime.geminiAccounts.status(accountId) : Promise.resolve(null),
     runtime.config.allowLocalCli ? readLocalClaudeStatus() : Promise.resolve(null),
     runtime.config.allowLocalCli ? readLocalCodex() : Promise.resolve(null),
-    runtime.config.allowLocalCli ? readLocalGemini() : Promise.resolve(null),
+    runtime.config.allowLocalCli ? readLocalGeminiStatus() : Promise.resolve(null),
   ]);
 
   const providers: ProviderStatus[] = [];
@@ -67,6 +70,7 @@ export async function readAuthStatus(
       hint: null as string | null,
       plan: null as string | null,
       expired: false,
+      projectId: null as string | null,
     };
 
     if (descriptor.id === "claude-code") {
@@ -102,11 +106,26 @@ export async function readAuthStatus(
     }
 
     if (descriptor.id === "gemini-cli") {
-      providers.push(
-        localGemini
-          ? { ...base, ready: true, source: "machine login", plan: null }
-          : { ...base, ready: false, source: "none" },
-      );
+      if (geminiAccount?.connected) {
+        providers.push({
+          ...base,
+          ready: true,
+          source: "connected account",
+          plan: geminiAccount.email,
+          expired: geminiAccount.expired,
+          projectId: geminiAccount.projectId,
+        });
+      } else if (localGemini?.connected) {
+        providers.push({
+          ...base,
+          ready: true,
+          source: "machine login",
+          plan: localGemini.email,
+          expired: localGemini.expired,
+        });
+      } else {
+        providers.push({ ...base, ready: false, source: "none" });
+      }
       continue;
     }
 

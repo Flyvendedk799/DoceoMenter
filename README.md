@@ -86,12 +86,18 @@ of the form:
 | **Anthropic API key** | A metered key | Pasted into the panel (encrypted at rest) or `ANTHROPIC_API_KEY` on the server |
 | **ChatGPT subscription (Codex)** | The `codex` login on the host | Read from the CLI's own file, never modified |
 | **OpenAI API key** | A metered key | Pasted into the panel or `OPENAI_API_KEY` on the server |
-| **Gemini subscription** | The `gemini` login on the host | Read from the CLI's own file, never modified |
+| **Gemini subscription** | OAuth, via Antigravity CLI's client | The visitor signs in from the page, *or* the `agy` login on the host is used if no account is connected |
 | **Gemini API key** | A metered key | Pasted into the panel or `GEMINI_API_KEY` on the server |
 
-Gemini has no browser sign-in row of its own: Google retired the paste-a-code OAuth flow Gemini
-CLI's public client would otherwise use, so the subscription is machine-login only, the same
-shape as Codex.
+The old free tier of Gemini CLI's own OAuth (Google's "Gemini Code Assist for individuals") was
+permanently retired by Google on 2026-06-18 in favour of a separate product, Antigravity. The
+Gemini subscription row above uses Antigravity CLI's OAuth client instead — reverse-engineered
+off a real `agy` login rather than published by Google, unlike Claude Code's and the old Gemini
+CLI's client credentials, which their own vendors shipped as source. See `geminiOAuth.ts`'s
+header for the full reasoning behind reusing it anyway. Either path also needs the account's
+Google identity to actually hold a Gemini Code Assist license — Google refuses the call
+(`SUBSCRIPTION_REQUIRED`) for a personal sign-in with no license attached, and some licenses
+need a `GEMINI_PROJECT_ID` / a project id typed into the panel alongside them.
 
 The point of the first row is that a run costs the person who asked for it rather than whoever
 set the server up. Signing in never puts a token in the browser: the PKCE verifier stays on the
@@ -115,7 +121,7 @@ own plan to pay for would be a lie about where the output came from.
   two processes deriving different keys read each other's rows as unreadable, which surfaces as
   people being signed out for no stated reason. Left unset, a key is generated once beside the
   credential file — fine for one host, useless for two.
-- **`ALLOW_LOCAL_CLI`** (default `true`) decides whether a `claude`, `codex` or `gemini` login on
+- **`ALLOW_LOCAL_CLI`** (default `true`) decides whether a `claude`, `codex` or `agy` login on
   the host may be used. Turn it **off** for any deployment a stranger can open, or one visitor's
   run bills the operator's own plan.
 - Credentials live in `<DATA_ROOT>/../credentials/credentials.json` (`0600`) by default, or in
@@ -171,7 +177,7 @@ The integration test in `apps/worker/src/pipeline.test.ts` exercises the full pi
 | `DOCEOMENTER_SECRET_KEY` | generated | Encrypts stored credentials; signs the account cookie |
 | `CREDENTIALS_DIR` | `<DATA_ROOT>/../credentials` | Where sealed credentials are kept |
 | `CREDENTIALS_DATABASE_URL` | — | Use Postgres for credentials instead of a file |
-| `ALLOW_LOCAL_CLI` | `true` | May a `claude`/`codex`/`gemini` login on the host be used |
+| `ALLOW_LOCAL_CLI` | `true` | May a `claude`/`codex`/`agy` login on the host be used |
 | `ANTHROPIC_API_KEY` | — | Deployment-wide key; absent and nothing stored → fixture client |
 | `ANTHROPIC_MODEL_PRIMARY` | `claude-opus-5` | Primary model |
 | `ANTHROPIC_MODEL_FALLBACK` | `claude-sonnet-5` | Used when the primary is rate-limited |
@@ -179,6 +185,7 @@ The integration test in `apps/worker/src/pipeline.test.ts` exercises the full pi
 | `GEMINI_API_KEY` | — | Deployment-wide key for the Gemini provider |
 | `GEMINI_MODEL_PRIMARY` | `gemini-3-pro` | Primary model |
 | `GEMINI_MODEL_FALLBACK` | `gemini-3-flash` | Used when the primary is rate-limited |
+| `GEMINI_PROJECT_ID` | — | GCP project for a machine-logged-in Gemini subscription's Code Assist license, if it needs one |
 | `REDIS_URL` | `redis://127.0.0.1:6379` | Queue + pub/sub |
 | `DATA_ROOT` | `data/runs` | Where artifacts are persisted |
 | `RUN_MODE` | `in-process` | `in-process` or `container` |

@@ -29,6 +29,7 @@ import {
   secretFilePath,
   type AuthConfig,
 } from "./config.js";
+import { GeminiAccountStore } from "./geminiAccountStore.js";
 import { signAccountId, verifyAccountToken } from "./session.js";
 
 export type SecretSource = "environment" | "file" | "ephemeral";
@@ -40,6 +41,8 @@ export type AuthRuntime = {
   /** Present when `available` is false: what to do about it. */
   reason?: string;
   accounts: ClaudeAccountStore;
+  /** Same shape as `accounts`, for a Gemini subscription connected via Antigravity CLI's OAuth. */
+  geminiAccounts: GeminiAccountStore;
   /**
    * API keys, scoped to one browser.
    *
@@ -90,6 +93,11 @@ export async function buildAuthRuntime(
     secret: secret.value,
     ...(config.namespace ? { namespace: config.namespace } : {}),
   });
+  const geminiAccounts = new GeminiAccountStore({
+    store: store.store,
+    secret: secret.value,
+    ...(config.namespace ? { namespace: config.namespace } : {}),
+  });
   const keyStores = new Map<string, ApiKeyStore>();
   const keysFor = (accountId: string | null): ApiKeyStore => {
     const namespace = [config.namespace, accountId ? `acct:${accountId}` : null]
@@ -118,6 +126,7 @@ export async function buildAuthRuntime(
             "Credentials cannot be stored: no writable credentials directory and no CREDENTIALS_DATABASE_URL.",
         }),
     accounts,
+    geminiAccounts,
     keysFor,
     session: {
       sign: (accountId) => signAccountId(accountId, secret.value),

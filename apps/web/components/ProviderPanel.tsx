@@ -182,7 +182,11 @@ export function ProviderPanel({
           )}
 
           {selected.id === "gemini-cli" && (
-            <GeminiNote status={selected} localCliEnabled={status?.localCliEnabled ?? false} />
+            <GeminiConnect
+              status={selected}
+              localCliEnabled={status?.localCliEnabled ?? false}
+              onSaved={(next) => setStatus(next)}
+            />
           )}
 
           {selected.kind === "key" && <KeyField provider={selected} onSaved={(next) => setStatus(next)} />}
@@ -221,15 +225,208 @@ function CodexNote({ status, localCliEnabled }: { status: ProviderStatus; localC
   );
 }
 
-function GeminiNote({ status, localCliEnabled }: { status: ProviderStatus; localCliEnabled: boolean }) {
+/**
+ * Sign in to a Gemini subscription, or fall back to explaining the machine login.
+ *
+ * There is no library component for this the way `ClaudeTerminal` covers Claude — the OAuth
+ * client this drives is Antigravity CLI's own, not something `ai-auth` ships a UI for — so the
+ * same three steps Claude's terminal renders (start, show the URL, take a pasted code back) are
+ * built here directly, against `/api/gemini/*`.
+ */
+function GeminiConnect({
+  status,
+  localCliEnabled,
+  onSaved,
+}: {
+  status: ProviderStatus;
+  localCliEnabled: boolean;
+  onSaved: (status: AuthStatus) => void;
+}) {
+  const [loginUrl, setLoginUrl] = useState<string | undefined>();
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | undefined>();
+
+  async function start() {
+    setBusy(true);
+    setNote(undefined);
+    try {
+      const response = await fetch("/api/gemini/login", { method: "POST", credentials: "same-origin" });
+      const body = (await response.json().catch(() => ({}))) as { url?: string; message?: string };
+      if (!response.ok || !body.url) throw new Error(body.message ?? `HTTP ${response.status}`);
+      setLoginUrl(body.url);
+    } catch (e) {
+      setNote((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function complete() {
+    setBusy(true);
+    setNote(undefined);
+    try {
+      const response = await fetch("/api/gemini/login/complete", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ code: code.trim() }),
+      });
+      const body = (await response.json().catch(() => ({}))) as AuthStatus & { message?: string };
+      if (!response.ok) throw new Error(body.message ?? `HTTP ${response.status}`);
+      onSaved(body);
+      setLoginUrl(undefined);
+      setCode("");
+    } catch (e) {
+      setNote((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function disconnect() {
+    setBusy(true);
+    try {
+      const response = await fetch("/api/gemini", { method: "DELETE", credentials: "same-origin" });
+      const body = (await response.json().catch(() => ({}))) as AuthStatus;
+      if (response.ok) onSaved(body);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (status.source === "connected account") {
+    return (
+      <div className="space-y-2">
+        <p className="dm-well rounded-sm px-3.5 py-3 text-[12.5px] leading-[1.65] text-fg-muted">
+          Signed in as <span className="text-fg">{status.plan}</span>. The credential is sealed here and
+          refreshed automatically — nothing is spent unless a run uses this provider.
+        </p>
+        <button type="button" disabled={busy} onClick={() => void disconnect()} className="dm-btn-secondary h-10 px-4 text-[13px]">
+          Disconnect
+        </button>
+        <ProjectIdField status={status} onSaved={onSaved} />
+        {note && <p className="font-mono text-[11px] text-fg-faint">{note}</p>}
+      </div>
+    );
+  }
+
+  if (status.source === "machine login") {
+    return (
+      <p className="dm-well rounded-sm px-3.5 py-3 text-[12.5px] leading-[1.65] text-fg-muted">
+        Using the <span className="text-fg">agy</span> login already on the machine hosting
+        DoceoMenter (signed in as {status.plan}). Nothing is stored here — the credential is
+        re-read each time, and the CLI keeps it current.
+      </p>
+    );
+  }
+
   return (
-    <p className="dm-well rounded-sm px-3.5 py-3 text-[12.5px] leading-[1.65] text-fg-muted">
-      {!localCliEnabled
-        ? "Machine logins are disabled on this deployment (ALLOW_LOCAL_CLI=false), so Gemini is unavailable here."
-        : status.ready
-          ? "Using the `gemini` login already on the machine hosting DoceoMenter. Nothing is stored here — the credential is re-read each time, and the CLI keeps it current."
-          : "No `gemini` login found on the machine hosting DoceoMenter. Run `gemini` there, choose \"Sign in with Google\", then reload this page."}
-    </p>
+    <div className="space-y-2">
+      {!loginUrl ? (
+        <>
+          <p className="dm-well rounded-sm px-3.5 py-3 text-[12.5px] leading-[1.65] text-fg-muted">
+            Sign in with the Google account whose plan should pay for this run. This uses Antigravity
+            CLI&apos;s own Google sign-in — the run only works once that account holds a Gemini Code
+            Assist license (personal Google sign-in with no license attached is refused by Google, not
+            by DoceoMenter).
+            {!localCliEnabled ? "" : " A `agy` login on the machine hosting DoceoMenter works too, if one exists."}
+          </p>
+          <button type="button" disabled={busy} onClick={() => void start()} className="dm-btn h-11 px-5 text-[13px]">
+            Connect with Google
+          </button>
+        </>
+      ) : (
+        <div className="space-y-2">
+          <p className="text-[12.5px] leading-[1.6] text-fg-muted">
+            Open this URL, approve, and paste back the code it shows:
+          </p>
+          <a
+            href={loginUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="block break-all rounded-sm border border-line bg-ink-900 px-3 py-2 font-mono text-[11px] text-accent"
+          >
+            {loginUrl}
+          </a>
+          <div className="flex flex-wrap gap-2">
+            <input
+              type="text"
+              autoComplete="off"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              placeholder="4/0A..."
+              className="dm-input h-11 min-w-0 flex-1 font-mono text-[13px]"
+            />
+            <button
+              type="button"
+              disabled={busy || code.trim().length === 0}
+              onClick={() => void complete()}
+              className="dm-btn h-11 px-5 text-[13px]"
+            >
+              Connect
+            </button>
+          </div>
+        </div>
+      )}
+      {note && <p className="font-mono text-[11px] text-fg-faint">{note}</p>}
+    </div>
+  );
+}
+
+/**
+ * A GCP project id, for the accounts whose Code Assist license needs one.
+ *
+ * `loadCodeAssist` calls this `userDefinedCloudaicompanionProject` — nothing in the OAuth
+ * token reveals it, so it is a value the account types in here rather than one DoceoMenter can
+ * discover on its own.
+ */
+function ProjectIdField({ status, onSaved }: { status: ProviderStatus; onSaved: (status: AuthStatus) => void }) {
+  const [value, setValue] = useState(status.projectId ?? "");
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | undefined>();
+
+  async function save() {
+    setBusy(true);
+    setNote(undefined);
+    try {
+      const response = await fetch("/api/gemini", {
+        method: "PUT",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId: value.trim() || null }),
+      });
+      const body = (await response.json().catch(() => ({}))) as AuthStatus & { message?: string };
+      if (!response.ok) throw new Error(body.message ?? `HTTP ${response.status}`);
+      onSaved(body);
+      setNote("Saved.");
+    } catch (e) {
+      setNote((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <label className="flex flex-col gap-2">
+      <span className="font-mono text-[11px] tracking-label text-fg-faint">
+        GCP PROJECT ID <span className="normal-case tracking-normal text-fg-faint">(only if the license needs one)</span>
+      </span>
+      <div className="flex flex-wrap gap-2">
+        <input
+          type="text"
+          autoComplete="off"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder="my-gcp-project"
+          className="dm-input h-11 min-w-0 flex-1 font-mono text-[13px]"
+        />
+        <button type="button" disabled={busy} onClick={() => void save()} className="dm-btn-secondary h-11 px-5 text-[13px]">
+          Save
+        </button>
+      </div>
+      {note && <span className="font-mono text-[11px] text-fg-faint">{note}</span>}
+    </label>
   );
 }
 
