@@ -77,7 +77,7 @@ pnpm --filter @doceomenter/capture exec playwright install --with-deps chromium
 ## Who pays for a run
 
 DoceoMenter uses [`ai-auth`](https://github.com/Flyvendedk799/ai-auth) for credentials, which
-means there are four ways to pay for the model calls a run makes, chosen in the panel at the top
+means there are six ways to pay for the model calls a run makes, chosen in the panel at the top
 of the form:
 
 | Provider | Credential | Where it comes from |
@@ -86,6 +86,12 @@ of the form:
 | **Anthropic API key** | A metered key | Pasted into the panel (encrypted at rest) or `ANTHROPIC_API_KEY` on the server |
 | **ChatGPT subscription (Codex)** | The `codex` login on the host | Read from the CLI's own file, never modified |
 | **OpenAI API key** | A metered key | Pasted into the panel or `OPENAI_API_KEY` on the server |
+| **Gemini subscription** | The `gemini` login on the host | Read from the CLI's own file, never modified |
+| **Gemini API key** | A metered key | Pasted into the panel or `GEMINI_API_KEY` on the server |
+
+Gemini has no browser sign-in row of its own: Google retired the paste-a-code OAuth flow Gemini
+CLI's public client would otherwise use, so the subscription is machine-login only, the same
+shape as Codex.
 
 The point of the first row is that a run costs the person who asked for it rather than whoever
 set the server up. Signing in never puts a token in the browser: the PKCE verifier stays on the
@@ -109,9 +115,9 @@ own plan to pay for would be a lie about where the output came from.
   two processes deriving different keys read each other's rows as unreadable, which surfaces as
   people being signed out for no stated reason. Left unset, a key is generated once beside the
   credential file — fine for one host, useless for two.
-- **`ALLOW_LOCAL_CLI`** (default `true`) decides whether a `claude` or `codex` login on the host
-  may be used. Turn it **off** for any deployment a stranger can open, or one visitor's run bills
-  the operator's own plan.
+- **`ALLOW_LOCAL_CLI`** (default `true`) decides whether a `claude`, `codex` or `gemini` login on
+  the host may be used. Turn it **off** for any deployment a stranger can open, or one visitor's
+  run bills the operator's own plan.
 - Credentials live in `<DATA_ROOT>/../credentials/credentials.json` (`0600`) by default, or in
   Postgres when `CREDENTIALS_DATABASE_URL` is set — that path wants `pg` installed and `ai-auth`'s
   `SCHEMA_SQL` applied through your own migrations.
@@ -130,7 +136,7 @@ apps/
 packages/
 ├── shared/        Cross-package types and schemas (zod)
 ├── auth/          ai-auth wiring: credential stores, provider resolution, sessions
-├── claude/        Provider transports (Anthropic / OpenAI / Codex), prompts, fixtures
+├── claude/        Provider transports (Anthropic / OpenAI / Codex / Gemini), prompts, fixtures
 ├── boot/          Project-type detection + boot strategies
 ├── capture/       Playwright runner, quality gates, mermaid harness, video
 └── render/        Markdown, Reveal.js deck, PDF
@@ -165,11 +171,14 @@ The integration test in `apps/worker/src/pipeline.test.ts` exercises the full pi
 | `DOCEOMENTER_SECRET_KEY` | generated | Encrypts stored credentials; signs the account cookie |
 | `CREDENTIALS_DIR` | `<DATA_ROOT>/../credentials` | Where sealed credentials are kept |
 | `CREDENTIALS_DATABASE_URL` | — | Use Postgres for credentials instead of a file |
-| `ALLOW_LOCAL_CLI` | `true` | May a `claude`/`codex` login on the host be used |
+| `ALLOW_LOCAL_CLI` | `true` | May a `claude`/`codex`/`gemini` login on the host be used |
 | `ANTHROPIC_API_KEY` | — | Deployment-wide key; absent and nothing stored → fixture client |
 | `ANTHROPIC_MODEL_PRIMARY` | `claude-opus-5` | Primary model |
 | `ANTHROPIC_MODEL_FALLBACK` | `claude-sonnet-5` | Used when the primary is rate-limited |
 | `OPENAI_API_KEY` | — | Deployment-wide key for the OpenAI provider |
+| `GEMINI_API_KEY` | — | Deployment-wide key for the Gemini provider |
+| `GEMINI_MODEL_PRIMARY` | `gemini-3-pro` | Primary model |
+| `GEMINI_MODEL_FALLBACK` | `gemini-3-flash` | Used when the primary is rate-limited |
 | `REDIS_URL` | `redis://127.0.0.1:6379` | Queue + pub/sub |
 | `DATA_ROOT` | `data/runs` | Where artifacts are persisted |
 | `RUN_MODE` | `in-process` | `in-process` or `container` |

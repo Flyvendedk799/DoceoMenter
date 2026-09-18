@@ -143,12 +143,17 @@ export async function runPipeline(opts: {
     });
     const wire = descriptor.wire;
     const configuredModel =
-      wire === "openai" ? config.OPENAI_MODEL_PRIMARY : config.ANTHROPIC_MODEL_PRIMARY;
+      wire === "openai"
+        ? config.OPENAI_MODEL_PRIMARY
+        : wire === "gemini"
+          ? config.GEMINI_MODEL_PRIMARY
+          : config.ANTHROPIC_MODEL_PRIMARY;
     // A requested model the registry does not know is still honoured — the catalogue is a
     // convenience, not an allowlist, and a model that shipped this morning is not an error.
     // One it *does* know, on the wrong wire, is: sending `gpt-5` to Anthropic can only 404.
     const requestedWire = resolved.model ? modelSpec(resolved.model)?.wire : undefined;
-    const modelUsable = resolved.model !== undefined && requestedWire !== (wire === "openai" ? "anthropic" : "openai");
+    const modelUsable =
+      resolved.model !== undefined && (requestedWire === undefined || requestedWire === wire);
     if (resolved.model && !modelUsable) {
       await bus.log(
         runId,
@@ -158,7 +163,11 @@ export async function runPipeline(opts: {
     }
     const modelPrimary = modelUsable ? resolved.model! : configuredModel;
     const modelFallback =
-      wire === "openai" ? config.OPENAI_MODEL_FALLBACK : config.ANTHROPIC_MODEL_FALLBACK;
+      wire === "openai"
+        ? config.OPENAI_MODEL_FALLBACK
+        : wire === "gemini"
+          ? config.GEMINI_MODEL_FALLBACK
+          : config.ANTHROPIC_MODEL_FALLBACK;
 
     state.provider = {
       id: resolved.provider,

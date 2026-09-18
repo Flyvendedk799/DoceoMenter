@@ -34,6 +34,7 @@ export {
   CredentialError,
   readLocalClaudeStatus,
   readLocalCodex,
+  readLocalGemini,
   resolveProviderCredential,
   type CredentialSource,
   type ProviderCredential,

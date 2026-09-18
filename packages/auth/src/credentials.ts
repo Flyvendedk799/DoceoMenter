@@ -12,7 +12,13 @@
  * was fresh when the job was enqueued.
  */
 
-import { ClaudeCodeCredential, CodexCredential, type CodexIdentity } from "@flyvendedk799/ai-auth";
+import {
+  ClaudeCodeCredential,
+  CodexCredential,
+  GeminiCliCredential,
+  type CodexIdentity,
+  type GeminiIdentity,
+} from "@flyvendedk799/ai-auth";
 import type { KeySource, ProviderId } from "@flyvendedk799/ai-auth";
 import { describeProvider } from "./providers.js";
 import { getAuthRuntime, type AuthRuntime } from "./runtime.js";
@@ -36,6 +42,15 @@ export type ProviderCredential =
       kind: "subscription";
       accessToken: string;
       accountId: string | null;
+      plan: string | null;
+      source: "local-cli";
+    }
+  | {
+      provider: "gemini-cli";
+      wire: "gemini";
+      kind: "subscription";
+      accessToken: string;
+      projectId: string | null;
       plan: string | null;
       source: "local-cli";
     };
@@ -71,6 +86,7 @@ export async function resolveProviderCredential(
 
   if (provider === "claude-code") return resolveClaudeSubscription(options, runtime);
   if (provider === "codex") return resolveCodexSubscription(options, runtime);
+  if (provider === "gemini-cli") return resolveGeminiSubscription(options, runtime);
   return resolveApiKey(options, runtime);
 }
 
@@ -137,6 +153,37 @@ async function resolveCodexSubscription(
   };
 }
 
+/**
+ * Gemini CLI, on a Google account subscription.
+ *
+ * Unlike Claude, whose OAuth pastes a code back into this app, Gemini CLI's public client is
+ * bound to a localhost redirect — Google retired the paste-a-code flow it would otherwise use
+ * — so there is no browser sign-in to offer here. Only the machine login is: `gemini` already
+ * signed in on the box hosting DoceoMenter, read the same way `codex` is.
+ */
+async function resolveGeminiSubscription(
+  options: ResolveOptions,
+  runtime: AuthRuntime,
+): Promise<ProviderCredential> {
+  if (!runtime.config.allowLocalCli) {
+    throw new CredentialError(
+      "Gemini runs on the `gemini` login of the machine hosting this app, and machine logins are disabled here (ALLOW_LOCAL_CLI=false).",
+      "gemini-cli",
+      false,
+    );
+  }
+  const identity = await new GeminiCliCredential().identity();
+  return {
+    provider: "gemini-cli",
+    wire: "gemini",
+    kind: "subscription",
+    accessToken: identity.accessToken,
+    projectId: identity.projectId ?? null,
+    plan: null,
+    source: "local-cli",
+  };
+}
+
 async function resolveApiKey(
   options: ResolveOptions,
   runtime: AuthRuntime,
@@ -162,10 +209,10 @@ async function resolveApiKey(
     } as ProviderCredential;
   }
 
+  const envVar =
+    wire === "anthropic" ? "ANTHROPIC_API_KEY" : wire === "gemini" ? "GEMINI_API_KEY" : "OPENAI_API_KEY";
   throw new CredentialError(
-    `No ${describeProvider(provider).label} is configured. Add one in the provider panel, or set ${
-      wire === "anthropic" ? "ANTHROPIC_API_KEY" : "OPENAI_API_KEY"
-    } on the server.`,
+    `No ${describeProvider(provider).label} is configured. Add one in the provider panel, or set ${envVar} on the server.`,
     provider,
   );
 }
@@ -201,6 +248,15 @@ export async function readLocalClaudeStatus(): Promise<{
 export async function readLocalCodex(): Promise<CodexIdentity | null> {
   try {
     return await new CodexCredential().identity();
+  } catch {
+    return null;
+  }
+}
+
+/** The machine's own `gemini` login, or null. Never throws. */
+export async function readLocalGemini(): Promise<GeminiIdentity | null> {
+  try {
+    return await new GeminiCliCredential().identity();
   } catch {
     return null;
   }

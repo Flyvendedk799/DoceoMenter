@@ -34,7 +34,7 @@ importers:
         version: link:../worker
       '@flyvendedk799/ai-auth':
         specifier: git+https://github.com/Flyvendedk799/ai-auth.git
-        version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/8e2441f9846c3520fd51b61aa6610b9597a1e681(react@18.3.1)
+        version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/443cc2aebe124586ca09cf4f82679759d63c0630(react@18.3.1)
       bullmq:
         specifier: 5.34.10
         version: 5.34.10
@@ -129,7 +129,7 @@ importers:
     dependencies:
       '@flyvendedk799/ai-auth':
         specifier: git+https://github.com/Flyvendedk799/ai-auth.git
-        version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/8e2441f9846c3520fd51b61aa6610b9597a1e681(react@18.3.1)
+        version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/443cc2aebe124586ca09cf4f82679759d63c0630(react@18.3.1)
     devDependencies:
       '@types/node':
         specifier: 22.9.0
@@ -192,7 +192,7 @@ importers:
         version: link:../shared
       '@flyvendedk799/ai-auth':
         specifier: git+https://github.com/Flyvendedk799/ai-auth.git
-        version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/8e2441f9846c3520fd51b61aa6610b9597a1e681(react@18.3.1)
+        version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/443cc2aebe124586ca09cf4f82679759d63c0630(react@18.3.1)
       zod:
         specifier: 3.25.76
         version: 3.25.76
@@ -555,8 +555,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@flyvendedk799/ai-auth@https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/8e2441f9846c3520fd51b61aa6610b9597a1e681':
-    resolution: {tarball: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/8e2441f9846c3520fd51b61aa6610b9597a1e681}
+  '@flyvendedk799/ai-auth@https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/443cc2aebe124586ca09cf4f82679759d63c0630':
+    resolution: {tarball: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/443cc2aebe124586ca09cf4f82679759d63c0630}
     version: 0.9.0
     engines: {node: '>=20'}
     peerDependencies:
@@ -1974,7 +1974,7 @@ snapshots:
   '@esbuild/win32-x64@0.23.1':
     optional: true
 
-  '@flyvendedk799/ai-auth@https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/8e2441f9846c3520fd51b61aa6610b9597a1e681(react@18.3.1)':
+  '@flyvendedk799/ai-auth@https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/443cc2aebe124586ca09cf4f82679759d63c0630(react@18.3.1)':
     optionalDependencies:
       react: 18.3.1
 

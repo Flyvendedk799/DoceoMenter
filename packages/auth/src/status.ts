@@ -8,7 +8,7 @@
  */
 
 import { modelsFor, type ModelSpec, type ProviderId } from "@flyvendedk799/ai-auth/registry";
-import { readLocalClaudeStatus, readLocalCodex } from "./credentials.js";
+import { readLocalClaudeStatus, readLocalCodex, readLocalGemini } from "./credentials.js";
 import { PROVIDERS, type ProviderDescriptor } from "./providers.js";
 import { getAuthRuntime, type AuthRuntime } from "./runtime.js";
 
@@ -49,10 +49,11 @@ export async function readAuthStatus(
     ? runtimeOrEnv
     : await getAuthRuntime(runtimeOrEnv as NodeJS.ProcessEnv | undefined);
 
-  const [claudeAccount, localClaude, localCodex] = await Promise.all([
+  const [claudeAccount, localClaude, localCodex, localGemini] = await Promise.all([
     accountId ? runtime.accounts.status(accountId) : Promise.resolve(null),
     runtime.config.allowLocalCli ? readLocalClaudeStatus() : Promise.resolve(null),
     runtime.config.allowLocalCli ? readLocalCodex() : Promise.resolve(null),
+    runtime.config.allowLocalCli ? readLocalGemini() : Promise.resolve(null),
   ]);
 
   const providers: ProviderStatus[] = [];
@@ -95,6 +96,15 @@ export async function readAuthStatus(
       providers.push(
         localCodex
           ? { ...base, ready: true, source: "machine login", plan: localCodex.planType }
+          : { ...base, ready: false, source: "none" },
+      );
+      continue;
+    }
+
+    if (descriptor.id === "gemini-cli") {
+      providers.push(
+        localGemini
+          ? { ...base, ready: true, source: "machine login", plan: null }
           : { ...base, ready: false, source: "none" },
       );
       continue;
