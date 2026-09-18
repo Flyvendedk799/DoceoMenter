@@ -313,11 +313,58 @@ function GeminiConnect({
 
   if (status.source === "machine login") {
     return (
-      <p className="dm-well rounded-sm px-3.5 py-3 text-[12.5px] leading-[1.65] text-fg-muted">
-        Using the <span className="text-fg">agy</span> login already on the machine hosting
-        DoceoMenter (signed in as {status.plan}). Nothing is stored here — the credential is
-        re-read each time, and the CLI keeps it current.
-      </p>
+      <div className="space-y-4">
+        <p className="dm-well rounded-sm px-3.5 py-3 text-[12.5px] leading-[1.65] text-fg-muted">
+          Using the <span className="text-fg">agy</span> login already on the machine hosting
+          DoceoMenter (signed in as {status.plan}). Nothing is stored here — the credential is
+          re-read each time, and the CLI keeps it current.
+        </p>
+        
+        <div className="space-y-2 pt-2 border-t border-line">
+          {!loginUrl ? (
+            <>
+              <p className="text-[12.5px] leading-[1.6] text-fg-muted">
+                You can override this by connecting your own Google account below.
+              </p>
+              <button type="button" disabled={busy} onClick={() => void start()} className="dm-btn h-11 px-5 text-[13px]">
+                Connect with Google
+              </button>
+            </>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-[12.5px] leading-[1.6] text-fg-muted">
+                Open this URL, approve, and paste back the code it shows:
+              </p>
+              <a
+                href={loginUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="block break-all rounded-sm border border-line bg-ink-900 px-3 py-2 font-mono text-[11px] text-accent"
+              >
+                {loginUrl}
+              </a>
+              <div className="flex flex-wrap gap-2">
+                <input
+                  type="text"
+                  autoComplete="off"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  placeholder="4/0A..."
+                  className="dm-input h-11 min-w-0 flex-1 font-mono text-[13px]"
+                />
+                <button
+                  type="button"
+                  disabled={busy || !code.trim()}
+                  onClick={() => void complete()}
+                  className="dm-btn h-11 px-5 text-[13px]"
+                >
+                  Submit
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     );
   }
 
