@@ -419,11 +419,16 @@ type GeminiGenerateResponse = { response?: { candidates?: GeminiCandidate[] }; c
 const GEMINI_REFUSAL_REASONS = new Set(["SAFETY", "RECITATION", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII"]);
 
 /**
- * Gemini CLI's personal subscription does not bill against the public
- * `generativelanguage.googleapis.com`; it routes to Google's internal Cloud Code endpoint, which
- * wraps the same request shape in `{ model, project, request: { ... } }` — see `ai-auth`'s own
- * notes on this. The metered key speaks the ordinary, documented `v1beta` endpoint instead.
+ * A subscription does not bill against the public `generativelanguage.googleapis.com`; it
+ * routes to Google's internal Cloud Code Assist endpoint, wrapping the same request shape in
+ * `{ model, project, request: { ... } }`. `ANTIGRAVITY_CODE_ASSIST_BASE_URL` overrides
+ * `geminiCliOptions`'s own default (`cloudcode-pa.googleapis.com`) because a real Antigravity
+ * CLI login was watched making these calls against `daily-cloudcode-pa.googleapis.com`
+ * instead — see `geminiOAuth.ts`'s header for how that credential was obtained. The metered
+ * key speaks the ordinary, documented `v1beta` endpoint instead, unaffected by any of this.
  */
+const ANTIGRAVITY_CODE_ASSIST_BASE_URL = "https://daily-cloudcode-pa.googleapis.com/v1internal";
+
 function geminiTransport(options: TransportOptions): Transport {
   const credential = options.credential;
   const subscription = credential.kind === "subscription";
@@ -431,13 +436,16 @@ function geminiTransport(options: TransportOptions): Transport {
   let model = options.modelPrimary;
 
   const cli = subscription
-    ? geminiCliOptions({
-        accessToken: (credential as { accessToken: string }).accessToken,
-        projectId: (credential as { projectId: string | null }).projectId,
-        refreshToken: null,
-        expiresAt: 0,
-        email: null,
-      })
+    ? geminiCliOptions(
+        {
+          accessToken: (credential as { accessToken: string }).accessToken,
+          projectId: (credential as { projectId: string | null }).projectId,
+          refreshToken: null,
+          expiresAt: 0,
+          email: null,
+        },
+        ANTIGRAVITY_CODE_ASSIST_BASE_URL,
+      )
     : geminiKeyOptions((credential as { key: string }).key);
 
   return {

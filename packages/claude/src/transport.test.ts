@@ -342,7 +342,7 @@ describe("gemini wire", () => {
     const turn = await conversation.ask("go");
     await conversation.ask("again");
 
-    expect(calls[0]!.url).toBe("https://cloudcode-pa.googleapis.com/v1internal:generateContent");
+    expect(calls[0]!.url).toBe("https://daily-cloudcode-pa.googleapis.com/v1internal:generateContent");
     // Without the project header the internal endpoint cannot tell which Cloud project to bill.
     expect(calls[0]!.headers.authorization).toBe("Bearer gcli-token");
     expect(calls[0]!.headers["x-goog-user-project"]).toBe("my-project");

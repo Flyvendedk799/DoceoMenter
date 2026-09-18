@@ -34,7 +34,7 @@ export {
   CredentialError,
   readLocalClaudeStatus,
   readLocalCodex,
-  readLocalGemini,
+  readLocalGeminiStatus,
   resolveProviderCredential,
   type CredentialSource,
   type ProviderCredential,
@@ -49,6 +49,19 @@ export {
   type LoginFailure,
   type PendingLogins,
 } from "./login.js";
+export {
+  completeGeminiOAuthLogin,
+  forgetPendingGeminiLogin,
+  pendingGeminiLogins,
+  startGeminiOAuthLogin,
+  type GeminiLoginFailure,
+  type PendingGeminiLogins,
+} from "./geminiLogin.js";
+export {
+  GeminiAccountStore,
+  type GeminiAccountStatus,
+  type GeminiAccountStoreOptions,
+} from "./geminiAccountStore.js";
 
 // Re-exported so the rest of the app has one import for the provider vocabulary rather than
 // two, and so a swap of the underlying library is one file's problem.

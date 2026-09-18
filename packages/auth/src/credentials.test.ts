@@ -135,11 +135,47 @@ describe("claude subscription resolution", () => {
     ).rejects.toThrow(/machine logins are disabled/);
   });
 
-  it("refuses gemini-cli when machine logins are disabled", async () => {
+});
+
+describe("gemini subscription resolution", () => {
+  const identity = {
+    accessToken: "ya29-live",
+    refreshToken: "1//refresh-me",
+    expiresAt: Date.now() + 60 * 60 * 1000,
+    email: "person@gmail.com",
+  };
+
+  it("uses the account's own connected subscription", async () => {
     const runtime = await runtimeIn();
+    await runtime.geminiAccounts.save("account-1", identity);
+
+    const credential = await resolveProviderCredential({
+      provider: "gemini-cli",
+      accountId: "account-1",
+      runtime,
+    });
+    expect(credential).toMatchObject({
+      kind: "subscription",
+      accessToken: "ya29-live",
+      plan: "person@gmail.com",
+      source: "account",
+    });
+  });
+
+  it("does not hand one account's subscription to another", async () => {
+    const runtime = await runtimeIn();
+    await runtime.geminiAccounts.save("account-1", identity);
+
     await expect(
-      resolveProviderCredential({ provider: "gemini-cli", runtime }),
-    ).rejects.toThrow(/machine logins are disabled/);
+      resolveProviderCredential({ provider: "gemini-cli", accountId: "account-2", runtime }),
+    ).rejects.toBeInstanceOf(CredentialError);
+  });
+
+  it("fails with an actionable message when nothing is connected", async () => {
+    const runtime = await runtimeIn();
+    await expect(resolveProviderCredential({ provider: "gemini-cli", runtime })).rejects.toThrow(
+      /No Gemini subscription is connected/,
+    );
   });
 });
 
