@@ -18,7 +18,8 @@ export const USER_CONCEPT_PROMPT = `Read the <repo-context>. Then call BOTH tool
    - audience: 1-3 short bullets for target users.
 
 2. submit_capture_plan with 4-10 shots that, together, would let a reader *see* this project. Constraints:
-   - If signals.hasFrontend is true, include >=1 shot with target="live-app" and importance=1.
+   - If signals.hasFrontend is true (browser UI), include >=1 shot with target="live-app" and importance=1.
+   - target="live-app" means a *browser* URL Playwright can open — not Electron, not a CLI/TUI, not a library with only a terminal demo. For those, prefer code-architecture / github-readme instead of inventing a "/" route.
    - If signals.hasBackend is true OR fileCount>50, include >=1 shot with target="code-architecture" and a Mermaid spec.
    - At most 1 video; only include if includeVideo is true.
    - Routes for live-app shots must be plausible from the source (e.g. "/" is always safe; deeper routes require evidence).`;

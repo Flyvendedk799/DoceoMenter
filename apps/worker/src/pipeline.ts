@@ -30,6 +30,7 @@ import {
 } from "@doceomenter/shared";
 import { cloneRepo } from "./stages/01-clone.js";
 import { analyzeRepo } from "./stages/02-analyze.js";
+import { shouldHardFailMissingLiveApp } from "./captureHardFail.js";
 import type { WorkerConfig } from "./config.js";
 import type { RunStore } from "./runStore.js";
 import type { RunEventBus } from "./eventBus.js";
@@ -277,6 +278,10 @@ export async function runPipeline(opts: {
     const plannedLive = capturePlan.shots.filter(
       (shot) => "target" in shot && shot.target === "live-app",
     ).length;
+    // Live-app browser shots skip when there is no URL (CLI/TUI/Electron/library,
+    // or bootApp=false). That is not a Playwright outage — hard-fail only when a
+    // browser URL was available and capture still produced zero live successes
+    // (c71f7cb4085c wrongly failed ai-auth: strategy=library, boot skipped).
     if (okCount === 0) {
       await setStage("capture", { status: "failed", message: "no shots succeeded" });
       console.error(`[capture] hard fail: no shots succeeded (${captureManifest.entries.length} planned)`);
@@ -284,16 +289,21 @@ export async function runPipeline(opts: {
         "Media capture produced no successful shots — Playwright/media capture is required.",
       );
     }
-    if (plannedLive > 0 && liveOk === 0) {
+    if (shouldHardFailMissingLiveApp({ plannedLive, liveOk, liveAppUrl })) {
       await setStage("capture", {
         status: "failed",
         message: `0/${plannedLive} live-app ok`,
       });
       console.error(
-        `[capture] hard fail: planned ${plannedLive} live-app shot(s) but none succeeded`,
+        `[capture] hard fail: planned ${plannedLive} live-app shot(s) but none succeeded (url=${liveAppUrl})`,
       );
       throw new Error(
         `Media capture failed for live-app shots (0/${plannedLive} ok) — Playwright capture is required.`,
+      );
+    }
+    if (plannedLive > 0 && liveOk === 0 && !liveAppUrl) {
+      console.error(
+        `[capture] no browser URL for ${plannedLive} live-app shot(s) (strategy=${strategy.kind}); skipping Playwright hard-fail`,
       );
     }
     if (okCount < captureManifest.entries.length) {

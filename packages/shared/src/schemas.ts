@@ -167,6 +167,12 @@ const TARGET_ALIASES: Record<string, string> = {
   "github-readme": "github-readme",
   github_readme: "github-readme",
   readme: "github-readme",
+  // Gemini invents file-shot targets (c71f7cb4085c shots.3) — map to readme capture.
+  code: "github-readme",
+  "code-snippet": "github-readme",
+  codesnippet: "github-readme",
+  source: "github-readme",
+  "source-file": "github-readme",
   "code-architecture": "code-architecture",
   code_architecture: "code-architecture",
   architecture: "code-architecture",
@@ -304,6 +310,9 @@ export function normalizeShotInput(raw: unknown): unknown {
     s.kind = "screenshot";
   }
   if (s.target === "code-architecture") {
+    s.kind = "screenshot";
+  }
+  if (s.target === "github-readme") {
     s.kind = "screenshot";
   }
 

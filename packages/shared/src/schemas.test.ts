@@ -211,6 +211,44 @@ describe("ShotSchema viewport bounds", () => {
       target: "code-architecture",
     });
   });
+
+  it("maps Gemini code/code-snippet file shots to github-readme (c71f7cb4085c)", () => {
+    const plan = CapturePlanSchema.safeParse({
+      shots: [
+        {
+          importance: 1,
+          description: "Architecture of ai-auth.",
+          spec: "graph TD\n  UI --> Core\n  Core --> Store",
+          target: "code-architecture",
+        },
+        {
+          description: "ClaudeTerminal mounted on a demo page.",
+          importance: 1,
+          route: "/",
+          target: "live-app",
+        },
+        {
+          description: "The main React frontend component for OAuth login flows.",
+          target: "code",
+          importance: 2,
+          file: "src/react/ClaudeTerminal.tsx",
+        },
+        {
+          target: "code-snippet",
+          description: "Shortest useful example from the README.",
+          importance: 2,
+        },
+      ],
+    });
+    expect(plan.success).toBe(true);
+    if (!plan.success) return;
+    expect(plan.data.shots.map((s) => ("target" in s ? s.target : null))).toEqual([
+      "code-architecture",
+      "live-app",
+      "github-readme",
+      "github-readme",
+    ]);
+  });
 });
 
 describe("isValidRunId", () => {
