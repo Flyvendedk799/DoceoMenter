@@ -1,0 +1,247 @@
+From b9032eaf1b703db546d768cdcb998a62767f60cf Mon Sep 17 00:00:00 2001
+From: Cursor Agent <cursoragent@cursor.com>
+Date: Sat, 19 Sep 2026 19:28:36 +0000
+Subject: [PATCH] fix: match real agy Cloud Code wire for Antigravity
+
+Bare model ids (no models/ prefix), daily host by default for personal
+tokens, never put aicode-consumers on x-goog-user-project, and authorize
+URL path matching agy 1.2.7. Verified against live personal Google AI login.
+---
+ package.json                |  2 +-
+ src/antigravity/oauth.ts    |  2 +-
+ src/clients/options.test.ts | 39 +++++++++++++++------
+ src/clients/options.ts      | 70 +++++++++++++++++++++++++++++++------
+ src/index.ts                |  5 +++
+ 5 files changed, 96 insertions(+), 22 deletions(-)
+
+diff --git a/package.json b/package.json
+index d9e3124..6d9bda1 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "@flyvendedk799/ai-auth",
+-  "version": "0.9.0",
++  "version": "0.9.1",
+   "description": "Bring-your-own-credential auth for Anthropic and OpenAI: Claude Code and Codex subscription logins, plus encrypted API keys. No runtime dependencies. Carries the traps that cost a day each.",
+   "license": "MIT",
+   "type": "module",
+diff --git a/src/antigravity/oauth.ts b/src/antigravity/oauth.ts
+index a12903c..27befd8 100644
+--- a/src/antigravity/oauth.ts
++++ b/src/antigravity/oauth.ts
+@@ -57,7 +57,7 @@ function getClientConfig(isDogfood: boolean) {
+ }
+ 
+ export const ANTIGRAVITY_OAUTH = {
+-  authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
++  authorizeUrl: "https://accounts.google.com/o/oauth2/auth",
+   tokenUrl: "https://oauth2.googleapis.com/token",
+   redirectUri: "https://antigravity.google/oauth-callback",
+ } as const;
+diff --git a/src/clients/options.test.ts b/src/clients/options.test.ts
+index 77e29d0..7091836 100644
+--- a/src/clients/options.test.ts
++++ b/src/clients/options.test.ts
+@@ -6,6 +6,8 @@ import {
+   antigravityCliOptions,
+   antigravityKeyOptions,
+   antigravity_STUDIO_BASE_URL,
++  CLOUD_CODE_DAILY_BASE_URL,
++  normalizeAntigravityModelId,
+   openAiKeyOptions,
+   toCodeAssistRequest,
+ } from './options.js';
+@@ -42,46 +44,63 @@ describe('client options', () => {
+     expect(opts.baseURL).toBe(antigravity_STUDIO_BASE_URL);
+   });
+ 
+-  it('generates correct antigravityCliOptions', () => {
++  it('defaults antigravityCliOptions to daily and skips aicode-consumers header', () => {
+     const opts = antigravityCliOptions({
+       accessToken: 'ya29.test',
+       refreshToken: null,
+       expiresAt: 0,
+       email: 'test@example.com',
+-      projectId: 'proj-456',
++      projectId: 'aicode-consumers',
+     });
+ 
+     expect(opts.authToken).toBe('ya29.test');
+-    expect(opts.baseURL).toBe('https://cloudcode-pa.googleapis.com/v1internal');
++    expect(opts.baseURL).toBe(CLOUD_CODE_DAILY_BASE_URL);
+     expect(opts.defaultHeaders?.Authorization).toBe('Bearer ya29.test');
++    expect(opts.defaultHeaders?.['x-goog-user-project']).toBeUndefined();
++    expect(opts.projectId).toBeUndefined();
++  });
++
++  it('puts a personal project on x-goog-user-project', () => {
++    const opts = antigravityCliOptions({
++      accessToken: 'ya29.test',
++      refreshToken: null,
++      expiresAt: 0,
++      email: 'test@example.com',
++      projectId: 'proj-456',
++    });
+     expect(opts.defaultHeaders?.['x-goog-user-project']).toBe('proj-456');
+   });
+ 
+-  it('builds Code Assist generation payload correctly with toCodeAssistRequest', () => {
+-    const stringReq = toCodeAssistRequest('antigravity-2.5-flash', 'Hello world');
++  it('builds Code Assist generation payload with bare model ids', () => {
++    const stringReq = toCodeAssistRequest('gemini-3-flash', 'Hello world');
+     expect(stringReq).toEqual({
+-      model: 'models/antigravity-2.5-flash',
++      model: 'gemini-3-flash',
+       request: {
+         contents: [{ role: 'user', parts: [{ text: 'Hello world' }] }],
+       },
+     });
+ 
+     const structuredReq = toCodeAssistRequest(
+-      'models/antigravity-2.5-pro',
++      'models/gemini-3.1-pro',
+       [{ role: 'user', parts: [{ text: 'Explain gravity' }] }],
+       {
+-        projectId: 'gcp-project',
++        projectId: 'aicode-consumers',
+         systemInstruction: 'You are an astrophysicist',
+         userPromptId: 'prompt-1',
+       },
+     );
+ 
+-    expect(structuredReq.model).toBe('models/antigravity-2.5-pro');
+-    expect(structuredReq.project).toBe('gcp-project');
++    expect(structuredReq.model).toBe('gemini-3.1-pro-low');
++    expect(structuredReq.project).toBe('aicode-consumers');
+     expect(structuredReq.user_prompt_id).toBe('prompt-1');
+     expect(structuredReq.request.systemInstruction).toEqual({
+       role: 'system',
+       parts: [{ text: 'You are an astrophysicist' }],
+     });
+   });
++
++  it('normalizeAntigravityModelId strips models/ and maps bare pro', () => {
++    expect(normalizeAntigravityModelId('models/gemini-3-flash')).toBe('gemini-3-flash');
++    expect(normalizeAntigravityModelId('gemini-3.1-pro')).toBe('gemini-3.1-pro-low');
++  });
+ });
+diff --git a/src/clients/options.ts b/src/clients/options.ts
+index d5d95fe..ae0b426 100644
+--- a/src/clients/options.ts
++++ b/src/clients/options.ts
+@@ -131,25 +131,65 @@ export function antigravityKeyOptions(apiKey: string, baseUrl = antigravity_STUD
+  *
+  * Directs calls to Google's internal Cloud Code endpoint (`https://cloudcode-pa.googleapis.com/v1internal`).
+  */
++/** Google shared consumer project — OK in generateContent body, never as x-goog-user-project. */
++export const GOOGLE_ENTERPRISE_CLOUD_CODE_PROJECT = 'aicode-consumers';
++
++export const CLOUD_CODE_PROD_BASE_URL = 'https://cloudcode-pa.googleapis.com/v1internal';
++export const CLOUD_CODE_DAILY_BASE_URL = 'https://daily-cloudcode-pa.googleapis.com/v1internal';
++
++/**
++ * Bare Cloud Code model ids (agy). Prefixing `models/` 404s on daily.
++ * Maps UI `gemini-3.1-pro` to the tiered id daily knows.
++ */
++export function normalizeAntigravityModelId(model: string): string {
++  const trimmed = model.trim();
++  const bare = trimmed.startsWith('models/') ? trimmed.slice('models/'.length) : trimmed;
++  if (bare === 'gemini-3.1-pro' || bare === 'gemini-3-pro') return 'gemini-3.1-pro-low';
++  return bare;
++}
++
++/**
++ * Strip enterprise shared project from header use. Personal tokens 403 on
++ * `x-goog-user-project: aicode-consumers` (body-only is fine).
++ */
++export function sanitizePersonalCloudCodeProject(
++  projectId: string | null | undefined,
++): string | null {
++  const trimmed = typeof projectId === 'string' ? projectId.trim() : '';
++  if (!trimmed || trimmed === GOOGLE_ENTERPRISE_CLOUD_CODE_PROJECT) return null;
++  return trimmed;
++}
++
++/**
++ * antigravity CLI / personal Google AI on Cloud Code.
++ *
++ * Verified vs agy 1.2.7 (flyvendee@gmail.com): consumer tokens succeed on **daily**;
++ * prod often false-429s. Never put `aicode-consumers` on `x-goog-user-project`.
++ */
+ export function antigravityCliOptions(
+-  identity: AntigravityOAuthIdentity & { projectId?: string | null },
++  identity: AntigravityOAuthIdentity & {
++    projectId?: string | null;
++    /** When true, or when unset for personal consumer, use daily host. */
++    isDogfood?: boolean;
++  },
+   baseUrl?: string,
+ ): AntigravityClientOptions {
+-  const isDogfoodUser = identity.isDogfood ?? false;
+-  const resolvedBaseUrl = baseUrl ?? (isDogfoodUser 
+-    ? 'https://daily-cloudcode-pa.googleapis.com/v1internal'
+-    : 'https://cloudcode-pa.googleapis.com/v1internal');
++  // Default daily — matches real agy post-login generateContent host for personal AI.
++  const useDaily = identity.isDogfood !== false;
++  const resolvedBaseUrl =
++    baseUrl ?? (useDaily ? CLOUD_CODE_DAILY_BASE_URL : CLOUD_CODE_PROD_BASE_URL);
+ 
+-  const effectiveProjectId = identity.projectId || null;
++  const headerProjectId = sanitizePersonalCloudCodeProject(identity.projectId);
+ 
+   return {
+     authToken: identity.accessToken,
+     baseURL: resolvedBaseUrl,
+-    projectId: effectiveProjectId ?? undefined,
++    projectId: headerProjectId ?? undefined,
+     defaultHeaders: {
+       Authorization: `Bearer ${identity.accessToken}`,
+       'Content-Type': 'application/json',
+-      ...(effectiveProjectId ? { 'x-goog-user-project': effectiveProjectId } : {}),
++      'User-Agent': 'antigravity/1.21.9 linux/amd64',
++      ...(headerProjectId ? { 'x-goog-user-project': headerProjectId } : {}),
+     },
+   };
+ }
+@@ -187,9 +227,19 @@ export function toCodeAssistRequest(
+       ? [{ role: 'user', parts: [{ text: contents }] }]
+       : contents;
+ 
++  // Bare model id — `models/` prefix 404s on daily-cloudcode-pa (verified 2026-09-19).
++  const wireModel = normalizeAntigravityModelId(model);
++  // aicode-consumers may be sent as body project; never rely on header for it.
++  const bodyProject =
++    options.projectId && options.projectId !== GOOGLE_ENTERPRISE_CLOUD_CODE_PROJECT
++      ? options.projectId
++      : options.projectId === GOOGLE_ENTERPRISE_CLOUD_CODE_PROJECT
++        ? GOOGLE_ENTERPRISE_CLOUD_CODE_PROJECT
++        : options.projectId;
++
+   return {
+-    model: model.startsWith('models/') ? model : `models/${model}`,
+-    ...(options.projectId ? { project: options.projectId } : {}),
++    model: wireModel,
++    ...(bodyProject ? { project: bodyProject } : {}),
+     ...(options.userPromptId ? { user_prompt_id: options.userPromptId } : {}),
+     request: {
+       contents: normalizedContents,
+diff --git a/src/index.ts b/src/index.ts
+index 6023b1a..f7869dc 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -140,6 +140,11 @@ export {
+   CODEX_BASE_URL,
+   codexOptions,
+   antigravityCliOptions,
++  normalizeAntigravityModelId,
++  sanitizePersonalCloudCodeProject,
++  CLOUD_CODE_DAILY_BASE_URL,
++  CLOUD_CODE_PROD_BASE_URL,
++  GOOGLE_ENTERPRISE_CLOUD_CODE_PROJECT,
+   antigravityKeyOptions,
+   antigravity_STUDIO_BASE_URL,
+   openAiKeyOptions,
+-- 
+2.43.0
+
