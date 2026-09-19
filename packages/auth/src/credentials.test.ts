@@ -197,19 +197,45 @@ describe("gemini subscription resolution", () => {
     });
   });
 
-  it("persists a managed project discovered via loadCodeAssist", async () => {
+  it("persists a managed project discovered via loadCodeAssist on Prod", async () => {
     const runtime = await runtimeIn();
-    await runtime.geminiAccounts.save("account-1", { ...identity, isDogfood: true });
+    await runtime.geminiAccounts.save("account-1", { ...identity, isDogfood: false });
 
     await resolveProviderCredential({
       provider: "gemini-cli",
       accountId: "account-1",
       runtime,
-      fetchImpl: codeAssistFetch("dogfood-managed-99"),
+      fetchImpl: codeAssistFetch("prod-managed-99"),
     });
 
     expect(await runtime.geminiAccounts.status("account-1")).toMatchObject({
-      projectId: "dogfood-managed-99",
+      projectId: "prod-managed-99",
+      isDogfood: false,
+    });
+  });
+
+  it("does not call loadCodeAssist for Dogfood — proceeds without a managed project", async () => {
+    const runtime = await runtimeIn();
+    await runtime.geminiAccounts.save("account-1", { ...identity, isDogfood: true });
+
+    const credential = await resolveProviderCredential({
+      provider: "gemini-cli",
+      accountId: "account-1",
+      runtime,
+      // Would fail if contacted — Dogfood must skip discovery.
+      fetchImpl: (async () => {
+        throw new Error("network should not be called");
+      }) as unknown as typeof fetch,
+    });
+
+    expect(credential).toMatchObject({
+      kind: "subscription",
+      projectId: null,
+      isDogfood: true,
+      source: "account",
+    });
+    expect(await runtime.geminiAccounts.status("account-1")).toMatchObject({
+      projectId: null,
       isDogfood: true,
     });
   });

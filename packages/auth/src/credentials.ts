@@ -247,7 +247,7 @@ async function resolveManagedProject(input: {
   projectId: string | null;
   options: ResolveOptions;
   persist?: (projectId: string) => Promise<void>;
-}): Promise<string> {
+}): Promise<string | null> {
   try {
     const resolved = await ensureCodeAssistProject({
       accessToken: input.accessToken,
@@ -255,7 +255,8 @@ async function resolveManagedProject(input: {
       projectId: input.projectId,
       ...(input.options.fetchImpl ? { fetchImpl: input.options.fetchImpl } : {}),
     });
-    if (input.persist && resolved !== input.projectId) {
+    // Soft-fail paths return null (TOS / Dogfood skip / HTTP error). Only persist a real id.
+    if (resolved && input.persist && resolved !== input.projectId) {
       await input.persist(resolved);
     }
     return resolved;

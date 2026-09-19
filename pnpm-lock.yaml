@@ -134,6 +134,9 @@ importers:
 
   packages/auth:
     dependencies:
+      '@doceomenter/shared':
+        specifier: workspace:*
+        version: link:../shared
       '@flyvendedk799/ai-auth':
         specifier: github:Flyvendedk799/ai-auth#main
         version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/f0e24581849a7fbeb64661991c3f7f4c79a85c54(react@18.3.1)
