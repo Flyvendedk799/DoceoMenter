@@ -38,6 +38,26 @@ describe("ensureCodeAssistProject", () => {
     expect(calls).toHaveLength(0);
   });
 
+  it("forwards discovery steps to an optional log sink for the run UI", async () => {
+    const lines: string[] = [];
+    const { impl } = recorder([
+      {
+        body: {
+          currentTier: { id: "free-tier" },
+          cloudaicompanionProject: "managed-ui-log",
+        },
+      },
+    ]);
+    await ensureCodeAssistProject({
+      accessToken: "ya29",
+      isDogfood: false,
+      fetchImpl: impl,
+      log: (line) => lines.push(line),
+    });
+    expect(lines.some((l) => l.includes("[code-assist] discovering managed project"))).toBe(true);
+    expect(lines.some((l) => l.includes("personal project=managed-ui-log"))).toBe(true);
+  });
+
   it("discovers G1/Dogfood on the daily host with agy metadata", async () => {
     const { calls, impl } = recorder([
       {
@@ -221,7 +241,7 @@ describe("ensureCodeAssistProject", () => {
     error.mockRestore();
   });
 
-  it("falls back to daily free-tier onboard when both hosts only return aicode-consumers", async () => {
+  it("falls back to body-only aicode-consumers when onboard cannot provision a personal project", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const { calls, impl } = recorder([
       {
@@ -251,7 +271,7 @@ describe("ensureCodeAssistProject", () => {
       {
         body: {
           done: true,
-          response: { cloudaicompanionProject: { id: "daily-provisioned-99" } },
+          response: { cloudaicompanionProject: "aicode-consumers" },
         },
       },
     ]);
@@ -261,9 +281,12 @@ describe("ensureCodeAssistProject", () => {
       fetchImpl: impl,
       sleep: async () => {},
     });
-    expect(discovered).toEqual({ projectId: "daily-provisioned-99", isDogfood: true });
+    expect(discovered).toEqual({
+      projectId: null,
+      bodyOnlyProjectId: "aicode-consumers",
+      isDogfood: true,
+    });
     expect(calls.at(-1)!.url).toBe("https://daily-cloudcode-pa.googleapis.com/v1internal:onboardUser");
-    expect(calls.at(-1)!.body).toMatchObject({ tier_id: "free-tier" });
     error.mockRestore();
   });
 

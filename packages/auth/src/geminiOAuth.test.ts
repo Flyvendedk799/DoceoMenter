@@ -11,7 +11,8 @@ describe("startGeminiLogin", () => {
     expect(url.searchParams.get("response_type")).toBe("code");
     expect(url.searchParams.get("redirect_uri")).toBe(GEMINI_OAUTH.redirectUri);
     expect(url.searchParams.get("scope")).toContain("https://www.googleapis.com/auth/cloud-platform");
-    expect(url.searchParams.get("scope")).toContain("https://www.googleapis.com/auth/aicode");
+    // `aicode` routes personal Google AI onto enterprise aicode-consumers — never request it.
+    expect(url.searchParams.get("scope")).not.toContain("https://www.googleapis.com/auth/aicode");
 
     expect(url.searchParams.get("code_challenge")).toMatch(/^[a-zA-Z0-9_-]{43}$/);
     expect(url.searchParams.get("code_challenge_method")).toBe("S256");
@@ -20,7 +21,7 @@ describe("startGeminiLogin", () => {
     expect(url.searchParams.get("state")).toBe(started.state);
   });
 
-  it("omits aicode on Dogfood — that client rejects it with restricted_client", () => {
+  it("uses the G1 Dogfood client when requested, still without aicode", () => {
     const started = startGeminiLogin(true);
     const url = new URL(started.url);
     expect(url.searchParams.get("scope")).not.toContain("https://www.googleapis.com/auth/aicode");

@@ -366,6 +366,42 @@ describe("gemini subscription resolution", () => {
       isDogfood: true,
     });
   });
+
+  it("returns body-only aicode-consumers when Google will not provision a personal project", async () => {
+    const runtime = await runtimeIn();
+    await runtime.geminiAccounts.save("account-1", { ...identity, isDogfood: false });
+
+    const fetchImpl = (async (_input: any) => {
+      return new Response(
+        JSON.stringify({
+          currentTier: { id: "free-tier" },
+          cloudaicompanionProject: "aicode-consumers",
+          done: true,
+          response: { cloudaicompanionProject: "aicode-consumers" },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+
+    const credential = await resolveProviderCredential({
+      provider: "gemini-cli",
+      accountId: "account-1",
+      runtime,
+      fetchImpl,
+    });
+
+    expect(credential).toMatchObject({
+      projectId: null,
+      bodyOnlyProjectId: "aicode-consumers",
+      isDogfood: true,
+      source: "account",
+    });
+    // Must not persist the enterprise id as the personal project.
+    expect(await runtime.geminiAccounts.status("account-1")).toMatchObject({
+      projectId: null,
+      isDogfood: true,
+    });
+  });
 });
 
 describe("status for the provider panel", () => {

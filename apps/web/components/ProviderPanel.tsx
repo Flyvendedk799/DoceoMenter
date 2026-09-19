@@ -264,7 +264,8 @@ function GeminiConnect({
   onRefresh: () => void;
 }) {
   const [loginUrl, setLoginUrl] = useState<string | undefined>();
-  const [isDogfood, setIsDogfood] = useState(false);
+  // Personal Google AI / Antigravity plans use the G1 client by default (no enterprise `aicode` scope).
+  const [isDogfood, setIsDogfood] = useState(true);
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | undefined>();
@@ -386,7 +387,7 @@ function GeminiConnect({
             <div className="flex flex-col gap-2">
               <label className="flex items-center gap-2 text-[12.5px] text-fg-muted cursor-pointer">
                 <input type="checkbox" checked={isDogfood} onChange={(e) => setIsDogfood(e.target.checked)} className="cursor-pointer" />
-                Advanced: G1 Dogfood endpoint
+                Personal Google AI / G1 client (recommended — leave on)
               </label>
               <button
                 type="button"
@@ -411,11 +412,13 @@ function GeminiConnect({
         <div className="flex flex-col gap-2">
           <p className="dm-well rounded-sm px-3.5 py-3 text-[12.5px] leading-[1.65] text-fg-muted">
             Sign in with the personal Google AI account that should pay for this run — same flow as
-            Claude Code in the panel. Enterprise/team licenses are not supported.
+            Claude Code in the panel. Disconnect and reconnect if you connected before this fix
+            (older tokens requested an enterprise Code Assist scope). Enterprise/team licenses are
+            not supported.
           </p>
           <label className="flex items-center gap-2 text-[12.5px] text-fg-muted cursor-pointer">
             <input type="checkbox" checked={isDogfood} onChange={(e) => setIsDogfood(e.target.checked)} className="cursor-pointer" />
-            Advanced: G1 Dogfood endpoint
+            Personal Google AI / G1 client (recommended — leave on)
           </label>
           <button
             type="button"

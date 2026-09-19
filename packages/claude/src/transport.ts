@@ -67,6 +67,8 @@ export type WireCredential =
       wire: "gemini";
       accessToken: string;
       projectId: string | null;
+      /** Shared companion for body `project` only — never x-goog-user-project. */
+      bodyOnlyProjectId?: string | null;
       /** When true, route to the Dogfood Cloud Code host (`daily-cloudcode-pa`). */
       isDogfood?: boolean;
       /** Where the token came from — shapes auth-failure messages. */
@@ -146,6 +148,9 @@ function fail(error: unknown, options: TransportOptions, model: string): never {
       facts.detail ?? "",
     );
     const noPersonalProject = !sanitizePersonalCloudCodeProject(options.credential.projectId ?? null);
+    const bodyOnly =
+      typeof options.credential.bodyOnlyProjectId === "string" &&
+      options.credential.bodyOnlyProjectId.length > 0;
     const exhausted =
       facts.status === 429 ||
       /RESOURCE_EXHAUSTED|Resource has been exhausted/i.test(facts.detail ?? "");
@@ -153,10 +158,10 @@ function fail(error: unknown, options: TransportOptions, model: string): never {
     if ((facts.status === 401 || facts.status === 403) && enterpriseProject) {
       described =
         `Google refused Antigravity for \`${model}\` because the request targeted the enterprise ` +
-        `consumer project \`aicode-consumers\`, which personal Google AI subscriptions cannot use. ` +
-        `Disconnect Antigravity in the provider panel, Connect again with your personal Google AI ` +
-        `account (enable Advanced: G1 Dogfood if your plan uses that surface), and retry — ` +
-        `DoceoMenter will not send that project for personal logins.${detail}`;
+        `consumer project \`aicode-consumers\` via \`x-goog-user-project\`, which personal Google AI ` +
+        `subscriptions cannot use. Disconnect Antigravity in the provider panel and Connect again ` +
+        `(use the G1 / personal Google AI option) so DoceoMenter gets a fresh token without the ` +
+        `enterprise Code Assist scope.${detail}`;
     } else if ((facts.status === 401 || facts.status === 403) && options.credential.source === "account") {
       described =
         `Google rejected the Antigravity account connected${at || " in the provider panel"} for \`${model}\`. ` +
@@ -165,17 +170,33 @@ function fail(error: unknown, options: TransportOptions, model: string): never {
       described =
         `Google rejected the machine Antigravity (\`agy\`) login for \`${model}\`. ` +
         `Run \`agy\` on the host and sign in again with the Google account that holds your personal Google AI subscription.${detail}`;
-    } else if (exhausted && noPersonalProject) {
+    } else if (exhausted && noPersonalProject && !bodyOnly) {
       described =
-        `Google returned RESOURCE_EXHAUSTED for Antigravity \`${model}\`, but DoceoMenter has no personal ` +
-        `Cloud Code managed project for this login (Google's enterprise \`aicode-consumers\` project is never used). ` +
-        `That often looks like a spent quota even when the Google AI dashboard shows limit remaining. ` +
-        `Disconnect Antigravity in the provider panel, Connect again (try Advanced: G1 Dogfood if needed), ` +
-        `or set your own GCP project id in the panel, then retry.${detail}`;
+        `Google returned RESOURCE_EXHAUSTED for Antigravity \`${model}\`, but DoceoMenter has no Cloud Code ` +
+        `project for this login. Disconnect Antigravity in the provider panel and Connect again with your ` +
+        `personal Google AI account (G1 / personal option), then retry — older connects that requested the ` +
+        `enterprise \`aicode\` scope often cannot discover a usable project.${detail}`;
     }
   }
 
   const message = described ?? `[${options.provider}] ${(error as Error)?.message ?? "call failed"}`;
+
+  if (
+    options.provider === "gemini-cli" &&
+    options.credential.kind === "subscription" &&
+    options.credential.wire === "gemini"
+  ) {
+    const personal = sanitizePersonalCloudCodeProject(options.credential.projectId ?? null);
+    const bodyOnly = options.credential.bodyOnlyProjectId?.trim() || null;
+    const host = cloudCodeBaseUrl(options.credential.isDogfood ?? false);
+    options.logger(
+      `[antigravity] call failed model=${model} status=${facts.status ?? "?"} host=${host} ` +
+        `headerProject=${personal ?? "(none)"} bodyProject=${personal ?? bodyOnly ?? "(none)"} ` +
+        `dogfood=${options.credential.isDogfood ? "yes" : "no"} source=${options.credential.source ?? "?"} ` +
+        `detail=${(facts.detail ?? (error as Error)?.message ?? "").slice(0, 240)}`,
+    );
+  }
+
   throw new ProviderCallError(message, facts, options.provider, model, { cause: error });
 }
 
@@ -495,11 +516,17 @@ function geminiTransport(options: TransportOptions): Transport {
     : null;
 
   const personalProjectId = sanitizePersonalCloudCodeProject(geminiSub?.projectId ?? null);
+  const bodyProjectId =
+    personalProjectId ??
+    (typeof geminiSub?.bodyOnlyProjectId === "string" && geminiSub.bodyOnlyProjectId.trim()
+      ? geminiSub.bodyOnlyProjectId.trim()
+      : null);
 
   const cli = geminiSub
     ? antigravityCliOptions(
         {
           accessToken: geminiSub.accessToken,
+          // Never put aicode-consumers on x-goog-user-project — personal tokens 403 on IAM.
           projectId: personalProjectId,
           refreshToken: null,
           expiresAt: 0,
@@ -532,18 +559,24 @@ function geminiTransport(options: TransportOptions): Transport {
           };
 
           const json = await withFallback(options, (m) => (model = m), async (m) => {
-            const projectId = personalProjectId;
-
+            if (geminiSub) {
+              options.logger(
+                `[antigravity] generateContent model=${m} host=${cli.baseURL} ` +
+                  `headerProject=${personalProjectId ?? "(none)"} bodyProject=${bodyProjectId ?? "(none)"} ` +
+                  `dogfood=${geminiSub.isDogfood ? "yes" : "no"}`,
+              );
+            }
             const response = geminiSub
               ? await doFetch(`${cli.baseURL}:generateContent`, {
                   method: "POST",
-                  // Authorization + x-goog-user-project from `antigravityCliOptions`, plus
-                  // agy's short User-Agent. Do not send Gemini-CLI Client-Metadata — that
-                  // path is "Code Assist for individuals" and returns TOS / #3501.
+                  // Authorization + optional x-goog-user-project (personal only) from
+                  // `antigravityCliOptions`, plus agy's short User-Agent.
                   headers: antigravityRequestHeaders(cli.defaultHeaders ?? {}),
                   body: JSON.stringify({
                     model: `models/${m}`,
-                    ...(projectId ? { project: projectId } : {}),
+                    // Body may carry aicode-consumers when that is all Google offers; the
+                    // header above will not, so we avoid the serviceUsageConsumer 403.
+                    ...(bodyProjectId ? { project: bodyProjectId } : {}),
                     request: generateRequest,
                     // Required by the Antigravity gateway — same fields `agy` sends.
                     userAgent: "antigravity",

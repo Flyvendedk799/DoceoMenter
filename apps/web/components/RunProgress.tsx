@@ -68,6 +68,10 @@ export function RunProgress({ initial }: { initial: RunState }) {
   const progressPct = totalStages ? Math.round((resolvedStages / totalStages) * 100) : 0;
   const isTerminal = TERMINAL.has(state.state);
   const elapsed = useElapsed(state.createdAt, isTerminal ? state.updatedAt : undefined);
+  const antigravityDiagnostics = logs
+    .map((line) => splitLogLine(line).message)
+    .filter((message) => /^\[(auth|code-assist|antigravity)\]/i.test(message.trim()))
+    .slice(-24);
 
   return (
     <section className="flex flex-col gap-8">
@@ -227,6 +231,20 @@ export function RunProgress({ initial }: { initial: RunState }) {
               <span className="dm-label">Worker log</span>
               <span className="ml-auto font-mono text-[11px] text-fg-faint">{logs.length} lines</span>
             </div>
+            {antigravityDiagnostics.length > 0 ? (
+              <div className="mb-2 rounded-md border border-accent/25 bg-accent/[.06] px-3.5 py-3">
+                <div className="mb-1.5 font-mono text-[11px] uppercase tracking-eyebrow text-accent">
+                  Antigravity diagnostics
+                </div>
+                <ul className="m-0 flex list-none flex-col gap-1 p-0 font-mono text-[11.5px] leading-[1.55] text-fg-muted">
+                  {antigravityDiagnostics.map((line, index) => (
+                    <li key={`agy-${index}`} className="break-words">
+                      {line}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
             <div
               ref={logRef}
               aria-live="polite"
@@ -308,6 +326,7 @@ function splitLogLine(line: string): { time?: string; message: string } {
 function logTone(message: string) {
   if (/\b(error|failed|fatal)\b/i.test(message)) return "text-fail";
   if (/\b(warn|degraded|skipped)\b/i.test(message)) return "text-warn";
+  if (/^\[(auth|code-assist|antigravity)\]/i.test(message.trim())) return "text-accent";
   if (/^(capture|boot|render|export):/i.test(message)) return "text-accent";
   return "text-fg-muted";
 }
