@@ -20,6 +20,13 @@ describe("startGeminiLogin", () => {
     expect(url.searchParams.get("state")).toBe(started.state);
   });
 
+  it("also requests the aicode scope on Dogfood (required for flagship models)", () => {
+    const started = startGeminiLogin(true);
+    const url = new URL(started.url);
+    expect(url.searchParams.get("scope")).toContain("https://www.googleapis.com/auth/aicode");
+    expect(url.searchParams.get("client_id")).toContain("884354919052");
+  });
+
   it("never reuses a verifier or state across two starts", () => {
     const a = startGeminiLogin(false);
     const b = startGeminiLogin(false);
@@ -69,12 +76,13 @@ describe("exchangeGeminiCode", () => {
     expect(calls[0]!.body.get("grant_type")).toBe("authorization_code");
     expect(calls[0]!.body.get("code")).toBe("4/0Acode");
     expect(calls[0]!.body.get("code_verifier")).toBe("the-verifier");
-    expect(calls[0]!.body.get("client_secret")).toBe(expect.any(String));
+    expect(calls[0]!.body.get("client_secret")).toEqual(expect.any(String));
     expect(identity).toEqual({
       accessToken: "ya29.live",
       refreshToken: "1//refresh",
       expiresAt: 1_000_000 + 3_600_000,
       email: "person@gmail.com",
+      isDogfood: undefined,
     });
   });
 

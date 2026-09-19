@@ -60,9 +60,16 @@ export async function completeGeminiOAuthLogin(
   accountId: string,
   code: unknown,
   store: GeminiAccountStore,
-  now = Date.now(),
-  pending: PendingGeminiLogins = pendingGeminiLogins,
+  options: {
+    now?: number;
+    pending?: PendingGeminiLogins;
+    /** GCP project id collected during the web login (same value the CLI prompts for). */
+    projectId?: string | null;
+  } = {},
 ): Promise<{ ok: true; email: string | null } | GeminiLoginFailure> {
+  const now = options.now ?? Date.now();
+  const pending = options.pending ?? pendingGeminiLogins;
+  const projectId = options.projectId;
   sweep(pending, now);
   const entry = pending.get(accountId);
   if (!entry) {
@@ -101,7 +108,9 @@ export async function completeGeminiOAuthLogin(
 
   try {
     const identity = await exchangeGeminiCode({ code: parsed.code, verifier: entry.verifier, isDogfood: entry.isDogfood });
-    await store.save(accountId, identity);
+    const trimmed =
+      typeof projectId === "string" ? projectId.trim() || null : projectId === null ? null : undefined;
+    await store.save(accountId, identity, trimmed);
     return { ok: true, email: identity.email };
   } catch (error) {
     if (error instanceof GeminiLoginError) {

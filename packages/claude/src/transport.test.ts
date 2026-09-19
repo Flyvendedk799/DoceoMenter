@@ -333,7 +333,13 @@ describe("gemini wire", () => {
       },
     ]);
     const transport = transportFor(
-      { kind: "subscription", wire: "gemini", accessToken: "gcli-token", projectId: "my-project" },
+      {
+        kind: "subscription",
+        wire: "gemini",
+        accessToken: "gcli-token",
+        projectId: "my-project",
+        isDogfood: true,
+      },
       impl,
       { provider: "gemini-cli", modelPrimary: "gemini-3.1-pro", modelFallback: "gemini-3-flash" },
     );
@@ -357,5 +363,48 @@ describe("gemini wire", () => {
       role: "user",
       parts: [{ functionResponse: { name: "submit_thing", response: { result: "received" } } }],
     });
+  });
+
+  it("omits x-goog-user-project when the subscription has no project id", async () => {
+    const { calls, impl } = recorder([
+      {
+        body: {
+          response: {
+            candidates: [
+              {
+                content: {
+                  role: "model",
+                  parts: [{ functionCall: { name: "submit_thing", args: { ok: true } } }],
+                },
+                finishReason: "STOP",
+              },
+            ],
+          },
+        },
+      },
+    ]);
+    const warnings: string[] = [];
+    const transport = createTransport({
+      provider: "gemini-cli",
+      credential: {
+        kind: "subscription",
+        wire: "gemini",
+        accessToken: "gcli-token",
+        projectId: null,
+        isDogfood: false,
+      },
+      modelPrimary: "gemini-3.1-pro",
+      modelFallback: "gemini-3-flash",
+      logger: (line) => warnings.push(line),
+      fetchImpl: impl,
+    });
+
+    await transport.start(SYSTEM, [TOOL], 1000).ask("go");
+
+    expect(calls[0]!.url).toBe("https://cloudcode-pa.googleapis.com/v1internal:generateContent");
+    expect(calls[0]!.headers.authorization).toBe("Bearer gcli-token");
+    expect(calls[0]!.headers["x-goog-user-project"]).toBeUndefined();
+    expect(calls[0]!.body.project).toBeUndefined();
+    expect(warnings.some((line) => /no GCP project id/i.test(line))).toBe(true);
   });
 });

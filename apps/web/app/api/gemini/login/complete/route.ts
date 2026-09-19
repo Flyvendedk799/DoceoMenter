@@ -12,8 +12,15 @@ export async function POST(request: Request) {
     return withAccountCookie(NextResponse.json({ error: "no_store" }, { status: 503 }), caller);
   }
 
-  const body = (await request.json().catch(() => ({}))) as { code?: unknown };
-  const result = await completeGeminiOAuthLogin(caller.accountId, body.code, caller.runtime.geminiAccounts);
+  const body = (await request.json().catch(() => ({}))) as { code?: unknown; projectId?: unknown };
+  if (body.projectId !== undefined && body.projectId !== null && typeof body.projectId !== "string") {
+    return withAccountCookie(NextResponse.json({ error: "bad_project_id" }, { status: 400 }), caller);
+  }
+  const projectId =
+    typeof body.projectId === "string" ? body.projectId : body.projectId === null ? null : undefined;
+  const result = await completeGeminiOAuthLogin(caller.accountId, body.code, caller.runtime.geminiAccounts, {
+    projectId,
+  });
   if (!result.ok) {
     const { ok: _ok, status, ...rest } = result;
     return withAccountCookie(NextResponse.json(rest, { status }), caller);

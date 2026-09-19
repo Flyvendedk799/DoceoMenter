@@ -58,7 +58,14 @@ export type WireCredential =
   | { kind: "key"; wire: "gemini"; key: string }
   | { kind: "subscription"; wire: "anthropic"; token: string }
   | { kind: "subscription"; wire: "openai"; accessToken: string; accountId: string | null }
-  | { kind: "subscription"; wire: "gemini"; accessToken: string; projectId: string | null };
+  | {
+      kind: "subscription";
+      wire: "gemini";
+      accessToken: string;
+      projectId: string | null;
+      /** When true, route to the Dogfood Cloud Code host (`daily-cloudcode-pa`). */
+      isDogfood?: boolean;
+    };
 
 export type TransportOptions = {
   provider: ProviderId;
@@ -421,32 +428,32 @@ const GEMINI_REFUSAL_REASONS = new Set(["SAFETY", "RECITATION", "PROHIBITED_CONT
 /**
  * A subscription does not bill against the public `generativelanguage.googleapis.com`; it
  * routes to Google's internal Cloud Code Assist endpoint, wrapping the same request shape in
- * `{ model, project, request: { ... } }`. `ANTIGRAVITY_CODE_ASSIST_BASE_URL` overrides
- * `antigravityCliOptions`'s own default (`cloudcode-pa.googleapis.com`) because a real Antigravity
- * CLI login was watched making these calls against `daily-cloudcode-pa.googleapis.com`
- * instead — see `geminiOAuth.ts`'s header for how that credential was obtained. The metered
- * key speaks the ordinary, documented `v1beta` endpoint instead, unaffected by any of this.
+ * `{ model, project, request: { ... } }`. `antigravityCliOptions` picks Prod
+ * (`cloudcode-pa.googleapis.com`) or Dogfood (`daily-cloudcode-pa.googleapis.com`) from
+ * `isDogfood` on the credential. The metered key speaks the ordinary, documented `v1beta`
+ * endpoint instead, unaffected by any of this.
  */
-const ANTIGRAVITY_CODE_ASSIST_BASE_URL = "https://daily-cloudcode-pa.googleapis.com/v1internal";
-
 function geminiTransport(options: TransportOptions): Transport {
   const credential = options.credential;
   const subscription = credential.kind === "subscription";
   const doFetch = options.fetchImpl ?? fetch;
   let model = options.modelPrimary;
 
-  const cli = subscription
+  const geminiSub = subscription
+    ? (credential as Extract<WireCredential, { kind: "subscription"; wire: "gemini" }>)
+    : null;
+
+  const cli = geminiSub
     ? antigravityCliOptions({
-        accessToken: (credential as { accessToken: string }).accessToken,
-        projectId: (credential as { projectId: string | null }).projectId,
+        accessToken: geminiSub.accessToken,
+        projectId: geminiSub.projectId,
         refreshToken: null,
         expiresAt: 0,
         email: null,
-        isDogfood: (credential as any).isDogfood,
+        isDogfood: geminiSub.isDogfood ?? false,
       })
     : antigravityKeyOptions((credential as { key: string }).key);
 
-  console.error(`[TRANSPORT DEBUG] Base URL: ${cli.baseURL} | isDogfood: ${(credential as any).isDogfood}`);
   return {
     provider: options.provider,
     currentModel: () => model,
@@ -468,18 +475,14 @@ function geminiTransport(options: TransportOptions): Transport {
           };
 
           const json = await withFallback(options, (m) => (model = m), async (m) => {
-            const projectId = subscription ? (credential as { projectId: string | null }).projectId : null;
-            // DEBUG: Call fetchAvailableModels
-            if (subscription) {
-              const modelsRes = await doFetch(`${cli.baseURL}:fetchAvailableModels`, {
-                method: "POST",
-                headers: cli.defaultHeaders ?? {},
-              });
-              const modelsText = await modelsRes.text();
-              console.error('[MODELS DEBUG]', modelsText);
+            const projectId = geminiSub?.projectId ?? null;
+            if (geminiSub && !projectId) {
+              options.logger(
+                "[gemini-cli] no GCP project id on this credential — flagship models (e.g. gemini-3.1-pro) need x-goog-user-project; set it in the provider panel",
+              );
             }
 
-            const response = subscription
+            const response = geminiSub
               ? await doFetch(`${cli.baseURL}:generateContent`, {
                   method: "POST",
                   // `antigravityCliOptions` already set `Authorization`, `Content-Type` and, when a
