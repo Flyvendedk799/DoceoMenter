@@ -359,9 +359,9 @@ function GeminiConnect({
     return (
       <div className="space-y-2">
         <p className="dm-well rounded-sm px-3.5 py-3 text-[12.5px] leading-[1.65] text-fg-muted">
-          Antigravity signed in as <span className="text-fg">{status.plan}</span> from the panel.
-          Prefer disconnecting and using the machine <span className="text-fg">agy</span> login for
-          personal Google AI — panel OAuth can hit Google&apos;s enterprise consumer project and fail.
+          Antigravity signed in as <span className="text-fg">{status.plan}</span> — same idea as
+          Claude Code&apos;s panel login. Runs bill this Google AI account, not the server&apos;s
+          machine login.
         </p>
         <button type="button" disabled={busy} onClick={() => void disconnect()} className="dm-btn-secondary h-10 px-4 text-[13px]">
           Disconnect
@@ -376,18 +376,14 @@ function GeminiConnect({
     return (
       <div className="space-y-4">
         <p className="dm-well rounded-sm px-3.5 py-3 text-[12.5px] leading-[1.65] text-fg-muted">
-          Using the Antigravity (<span className="text-fg">agy</span>) login already on this machine
-          (signed in as {status.plan}). Same idea as Claude Code&apos;s machine login — nothing is
-          stored here; the credential is re-read each time.
+          No browser session — using the Antigravity (<span className="text-fg">agy</span>) login on
+          this machine (signed in as {status.plan}). For normal use, open DoceoMenter in a browser
+          and Connect Antigravity below so your own Google AI account pays.
         </p>
 
         <div className="space-y-2 pt-2 border-t border-line">
           {!loginUrl ? (
             <div className="flex flex-col gap-2">
-              <p className="text-[12.5px] leading-[1.6] text-fg-muted">
-                Optional: Connect a different personal Google AI account from the panel (not for
-                enterprise/team licenses).
-              </p>
               <label className="flex items-center gap-2 text-[12.5px] text-fg-muted cursor-pointer">
                 <input type="checkbox" checked={isDogfood} onChange={(e) => setIsDogfood(e.target.checked)} className="cursor-pointer" />
                 Advanced: G1 Dogfood endpoint
@@ -396,7 +392,7 @@ function GeminiConnect({
                 type="button"
                 disabled={busy}
                 onClick={() => void start()}
-                className="dm-btn-secondary h-11 px-5 text-[13px] self-start"
+                className="dm-btn h-11 px-5 text-[13px] self-start"
               >
                 Connect Antigravity in browser
               </button>
@@ -414,9 +410,8 @@ function GeminiConnect({
       {!loginUrl ? (
         <div className="flex flex-col gap-2">
           <p className="dm-well rounded-sm px-3.5 py-3 text-[12.5px] leading-[1.65] text-fg-muted">
-            {!localCliEnabled
-              ? "Machine logins are disabled on this deployment (ALLOW_LOCAL_CLI=false). Connect Antigravity with a personal Google AI account below — enterprise/team licenses are not supported."
-              : "Sign in on the machine with Antigravity (`agy`), then reload — same smooth path as Claude Code. Or Connect below with a personal Google AI account (not enterprise/team)."}
+            Sign in with the personal Google AI account that should pay for this run — same flow as
+            Claude Code in the panel. Enterprise/team licenses are not supported.
           </p>
           <label className="flex items-center gap-2 text-[12.5px] text-fg-muted cursor-pointer">
             <input type="checkbox" checked={isDogfood} onChange={(e) => setIsDogfood(e.target.checked)} className="cursor-pointer" />

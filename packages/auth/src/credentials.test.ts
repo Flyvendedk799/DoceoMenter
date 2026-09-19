@@ -258,19 +258,19 @@ describe("gemini subscription resolution", () => {
     ).rejects.toBeInstanceOf(CredentialError);
   });
 
-  it("fails with an actionable message when nothing is connected", async () => {
-    const runtime = await runtimeIn();
-    await expect(resolveProviderCredential({ provider: "gemini-cli", runtime })).rejects.toThrow(
-      /No Antigravity login is connected/,
-    );
-  });
-
-  it("falls through to machine Antigravity when a browser account id has no panel connect", async () => {
-    // Every visitor gets an account cookie; that must not hide the host `agy` login (Claude-shaped).
+  it("does not use the machine agy login when a browser account id is present", async () => {
+    // Hosted DoceoMenter: browser runs must Connect in the panel, never ServerHoster `agy`.
     const runtime = await runtimeIn({ ALLOW_LOCAL_CLI: "true" });
     await expect(
       resolveProviderCredential({ provider: "gemini-cli", accountId: "browser-only", runtime }),
-    ).rejects.toThrow(/No Antigravity login is connected|No Antigravity CLI login found/);
+    ).rejects.toThrow(/Connect with your personal Google AI account|provider panel/i);
+  });
+
+  it("fails with an actionable message when nothing is connected", async () => {
+    const runtime = await runtimeIn();
+    await expect(resolveProviderCredential({ provider: "gemini-cli", runtime })).rejects.toThrow(
+      /Connect Antigravity from the provider panel/,
+    );
   });
 
   it("clears a stored aicode-consumers project and continues without it", async () => {

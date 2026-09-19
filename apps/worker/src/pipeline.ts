@@ -187,7 +187,11 @@ export async function runPipeline(opts: {
     await setStage("draft-concept", {
       status: "running",
       message: credential
-        ? `${descriptor.label} concept + plan (${modelPrimary})`
+        ? `${descriptor.label}${
+            credential.kind === "subscription" && "plan" in credential && credential.plan
+              ? ` (${credential.plan})`
+              : ""
+          } concept + plan (${modelPrimary})`
         : "concept + plan (fixture mode — no credential)",
     });
     const ai = createClaudeClient({
@@ -413,8 +417,9 @@ async function resolveCredential(opts: {
             : credential.source;
       const identityLine = `[auth] Antigravity account=${account} via=${via}`;
       opts.log(identityLine);
-      // Also stdout: ServerHoster service logs only see process stdout/stderr, not the run bus.
-      console.info(identityLine);
+      // stderr: ServerHoster reliably captures console.error (same channel as [code-assist]
+      // and the old AUTH DIAGNOSTIC). console.info was invisible in service logs.
+      console.error(identityLine);
       opts.log(
         `[auth] antigravity project=${credential.projectId ?? "(none)"} dogfood=${credential.isDogfood ? "yes" : "no"}`,
       );

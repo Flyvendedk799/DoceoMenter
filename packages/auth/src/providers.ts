@@ -58,7 +58,7 @@ export const PROVIDERS: readonly ProviderDescriptor[] = [
     id: "gemini-cli",
     label: "Antigravity",
     blurb:
-      "Personal Google AI via Antigravity — run `agy` on this machine (same idea as Claude Code), or Connect from the panel. Not for enterprise/team licenses.",
+      "Sign in with your personal Google AI account in the panel — same idea as Claude Code. Not for enterprise/team licenses.",
     wire: "gemini",
     kind: "subscription",
     defaults: { primary: "gemini-3.1-pro", fallback: "gemini-3-flash" },
