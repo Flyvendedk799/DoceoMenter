@@ -29,6 +29,7 @@ export const USER_CONCEPT_PROMPT = `Read the <repo-context>. Then call BOTH tool
    - If signals.hasBackend is true OR fileCount>50, include >=1 shot with target="code-architecture" and a Mermaid spec.
    - At most 1 video; only include if includeVideo is true AND surface is browser.
    - Routes/commands for live-app shots must be plausible from the source.
+   - For static HTML prototype dirs (project/, admin/, …), use file routes like /Landing.html or /Kategorier.html — not a framework SPA "/".
    - planMode=guided: honor captureTargets (one shot per target when possible).
    - planMode=brief: honor captureBrief as the primary intent for live shots.
    - planMode=auto: choose the best surfaces yourself.`;
@@ -64,6 +65,9 @@ export type CaptureGuidance = {
   capturePlanMode: "auto" | "guided" | "brief";
   captureTargets?: string[];
   captureBrief?: string;
+  /** Suggested live-app routes for static HTML prototypes (e.g. /Landing.html). */
+  suggestedRoutes?: string[];
+  staticHtmlDir?: string;
 };
 
 export function formatCaptureGuidance(g: CaptureGuidance): string {
@@ -75,6 +79,13 @@ export function formatCaptureGuidance(g: CaptureGuidance): string {
     `captureSurface: ${g.captureSurface}`,
     `planMode: ${g.capturePlanMode}`,
   ];
+  if (g.staticHtmlDir) {
+    lines.push(`staticHtmlDir: ${g.staticHtmlDir}`);
+  }
+  if (g.suggestedRoutes && g.suggestedRoutes.length > 0) {
+    lines.push(`suggestedLiveRoutes:`);
+    for (const r of g.suggestedRoutes) lines.push(`  - ${r}`);
+  }
   if (g.captureTargets && g.captureTargets.length > 0) {
     lines.push(`captureTargets:`);
     for (const t of g.captureTargets) lines.push(`  - ${t}`);

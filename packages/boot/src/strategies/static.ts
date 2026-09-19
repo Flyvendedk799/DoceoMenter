@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { createReadStream, statSync } from "node:fs";
+import { createReadStream, readdirSync, statSync } from "node:fs";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import type { Logger, BootedApp } from "./common.js";
 
@@ -30,7 +30,7 @@ export async function bootStatic(
   const root = resolve(repoDir, subdir);
   const server = createServer((req, res) => {
     const urlPath = decodeURIComponent((req.url ?? "/").split("?")[0]!);
-    let target = normalize(join(root, urlPath));
+    let target = normalize(join(root, urlPath === "/" ? "" : urlPath));
     if (target !== root && !target.startsWith(root + sep)) {
       res.statusCode = 403;
       res.end("forbidden");
@@ -38,7 +38,39 @@ export async function bootStatic(
     }
     try {
       const s = statSync(target);
-      if (s.isDirectory()) target = join(target, "index.html");
+      if (s.isDirectory()) {
+        const indexCandidates = [
+          "index.html",
+          "Index.html",
+          "Landing.html",
+          "landing.html",
+          "home.html",
+          "Home.html",
+        ];
+        let found: string | undefined;
+        for (const name of indexCandidates) {
+          try {
+            statSync(join(target, name));
+            found = join(target, name);
+            break;
+          } catch {
+            /* try next */
+          }
+        }
+        if (!found) {
+          // First HTML in the directory (prototype bundles often lack index.html).
+          try {
+            const html = readdirSync(target).find(
+              (n) => /\.html?$/i.test(n) && !/^404\.html?$/i.test(n),
+            );
+            if (html) found = join(target, html);
+          } catch {
+            /* ignore */
+          }
+        }
+        if (found) target = found;
+        else target = join(target, "index.html");
+      }
     } catch {
       res.statusCode = 404;
       res.end("not found");

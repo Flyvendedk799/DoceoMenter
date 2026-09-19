@@ -1,6 +1,6 @@
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { boot, detectStrategy } from "@doceomenter/boot";
+import { boot, detectStrategy, findStaticHtmlDir, suggestStaticRoutes } from "@doceomenter/boot";
 import { postProcessAssets, runCapturePlan, deriveCliCommands } from "@doceomenter/capture";
 import { createClaudeClient } from "@doceomenter/claude";
 import {
@@ -226,6 +226,10 @@ export async function runPipeline(opts: {
       configureAt: "the provider panel",
       logger: (l) => void bus.log(runId, l),
     });
+    const staticHtmlDir = findStaticHtmlDir(analysis);
+    const suggestedRoutes = staticHtmlDir
+      ? suggestStaticRoutes(analysis, staticHtmlDir)
+      : undefined;
     let { concept, capturePlan } = await ai.draftConceptAndPlan(analysis, {
       includeVideo: resolved.includeVideo,
       outputStyle: resolved.outputStyle,
@@ -234,6 +238,8 @@ export async function runPipeline(opts: {
       capturePlanMode: resolved.capturePlanMode,
       captureTargets: resolved.captureTargets,
       captureBrief: resolved.captureBrief,
+      ...(staticHtmlDir ? { staticHtmlDir } : {}),
+      ...(suggestedRoutes && suggestedRoutes.length > 0 ? { suggestedRoutes } : {}),
     });
     // Ensure CLI/Electron runs that want live media actually have a live-app shot to capture.
     if (
@@ -262,6 +268,25 @@ export async function runPipeline(opts: {
           ...capturePlan.shots,
         ].slice(0, 10),
       };
+    }
+    // Static HTML prototypes (FM-Ecommerce project/) — inject live routes if the model skipped them.
+    if (
+      resolved.liveMedia !== "skip" &&
+      captureSurface === "browser" &&
+      suggestedRoutes &&
+      suggestedRoutes.length > 0 &&
+      !capturePlan.shots.some((s) => "target" in s && s.target === "live-app")
+    ) {
+      const injected = suggestedRoutes.slice(0, 3).map((route, i) => ({
+        id: i === 0 ? "live-home" : `live-${i}`,
+        kind: "screenshot" as const,
+        target: "live-app" as const,
+        route,
+        viewport: { w: 1440, h: 900 },
+        caption: resolved.captureBrief || `Live page ${route}`,
+        importance: (i === 0 ? 1 : 2) as 1 | 2,
+      }));
+      capturePlan = { shots: [...injected, ...capturePlan.shots].slice(0, 10) };
     }
     if (resolved.liveMedia === "skip") {
       capturePlan = {

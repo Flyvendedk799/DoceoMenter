@@ -162,4 +162,66 @@ describe("detectStrategy", () => {
     expect(detectStrategy(a, false).kind).toBe("static");
     expect(detectStrategy(a, true).kind).toBe("docker");
   });
+
+  it("detects nested HTML prototype dirs as static (FM-Ecommerce style)", () => {
+    const a = mk({
+      fileIndex: [
+        { path: "project/Landing.html", bytes: 100 },
+        { path: "project/Kategorier.html", bytes: 100 },
+        { path: "project/Checkout.html", bytes: 100 },
+        { path: "backend/package.json", bytes: 50 },
+        { path: "backend/server.js", bytes: 50 },
+        { path: "README.md", bytes: 50 },
+      ],
+      manifests: {
+        nodePkg: {
+          name: "futurematch-backend",
+          scripts: { start: "node server.js" },
+          deps: ["express"],
+          devDeps: [],
+        },
+        packageDir: "backend",
+      },
+      signals: {
+        hasFrontend: true,
+        hasBackend: true,
+        hasCLI: false,
+        hasElectron: false,
+        isLibrary: false,
+        framework: "static",
+      },
+    });
+    const s = detectStrategy(a);
+    expect(s.kind).toBe("static");
+    if (s.kind === "static") expect(s.dir).toBe("project");
+  });
+
+  it("detects nested backend package as node-server when no HTML UI", () => {
+    const a = mk({
+      fileIndex: [
+        { path: "backend/package.json", bytes: 50 },
+        { path: "backend/server.js", bytes: 50 },
+      ],
+      manifests: {
+        nodePkg: {
+          name: "api",
+          scripts: { start: "node server.js" },
+          deps: ["express"],
+          devDeps: [],
+        },
+        packageDir: "backend",
+      },
+      signals: {
+        hasFrontend: false,
+        hasBackend: true,
+        hasCLI: false,
+        hasElectron: false,
+        isLibrary: false,
+        framework: "express",
+      },
+    });
+    const s = detectStrategy(a);
+    expect(s.kind).toBe("node-server");
+    if (s.kind === "node-server") expect(s.cwd).toBe("backend");
+  });
 });
