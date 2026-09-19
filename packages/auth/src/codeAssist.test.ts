@@ -149,4 +149,44 @@ describe("ensureCodeAssistProject", () => {
     ).resolves.toBeNull();
     error.mockRestore();
   });
+
+  it("ignores enterprise shared project aicode-consumers from loadCodeAssist", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { impl } = recorder([
+      {
+        body: {
+          currentTier: { id: "free-tier" },
+          cloudaicompanionProject: "aicode-consumers",
+        },
+      },
+    ]);
+    await expect(
+      ensureCodeAssistProject({ accessToken: "ya29", isDogfood: false, fetchImpl: impl }),
+    ).resolves.toBeNull();
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it("does not short-circuit on a stored aicode-consumers project id", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { calls, impl } = recorder([
+      {
+        body: {
+          currentTier: { id: "free-tier" },
+          cloudaicompanionProject: "aicode-consumers",
+        },
+      },
+    ]);
+    await expect(
+      ensureCodeAssistProject({
+        accessToken: "ya29",
+        projectId: "aicode-consumers",
+        isDogfood: false,
+        fetchImpl: impl,
+      }),
+    ).resolves.toBeNull();
+    // Must not treat the enterprise id as "already known" — rediscovery runs and is still dropped.
+    expect(calls).toHaveLength(1);
+    error.mockRestore();
+  });
 });

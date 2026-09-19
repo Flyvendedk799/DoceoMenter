@@ -398,7 +398,7 @@ async function resolveCredential(opts: {
     opts.log(`[auth] ${opts.provider} credential from ${credential.source}`);
     if (credential.kind === "subscription" && credential.provider === "gemini-cli") {
       opts.log(
-        `[auth] gemini-cli project=${credential.projectId ?? "(none)"} dogfood=${credential.isDogfood ? "yes" : "no"}`,
+        `[auth] antigravity project=${credential.projectId ?? "(none)"} dogfood=${credential.isDogfood ? "yes" : "no"} source=${credential.source}`,
       );
     }
     return credential;

@@ -86,20 +86,20 @@ of the form:
 | **Anthropic API key** | A metered key | Pasted into the panel (encrypted at rest) or `ANTHROPIC_API_KEY` on the server |
 | **ChatGPT subscription (Codex)** | The `codex` login on the host | Read from the CLI's own file, never modified |
 | **OpenAI API key** | A metered key | Pasted into the panel or `OPENAI_API_KEY` on the server |
-| **Gemini subscription** | OAuth, via Antigravity CLI's client | The visitor signs in from the page, *or* the `agy` login on the host is used if no account is connected |
+| **Antigravity** | Personal Google AI via Antigravity (`agy`) | Prefer the `agy` login on the host (same idea as Claude Code’s machine login); optional Connect from the panel. Not for enterprise/team. |
 | **Gemini API key** | A metered key | Pasted into the panel or `GEMINI_API_KEY` on the server |
 
 The old free tier of Gemini CLI's own OAuth (Google's "Gemini Code Assist for individuals") was
 permanently retired by Google on 2026-06-18 in favour of a separate product, Antigravity. The
-Gemini subscription row above uses Antigravity CLI's OAuth client instead — reverse-engineered
+Antigravity row above uses Antigravity CLI's OAuth client — reverse-engineered
 off a real `agy` login rather than published by Google, unlike Claude Code's and the old Gemini
 CLI's client credentials, which their own vendors shipped as source. See `geminiOAuth.ts`'s
-header for the full reasoning behind reusing it anyway. Either path also needs the account's
-Google identity to actually hold a Gemini Code Assist license — Google refuses the call
-(`SUBSCRIPTION_REQUIRED`) for a personal sign-in with no license attached, and some licenses
-need a `GEMINI_PROJECT_ID` / a project id typed into the panel alongside them.
+header for the full reasoning behind reusing it anyway. DoceoMenter targets **personal Google AI
+subscriptions only**: it never sends Google's enterprise shared project `aicode-consumers` (that
+path needs IAM personal accounts do not have). Optional panel Connect can still supply a *personal*
+GCP project id when you have one; see `docs/bug-3501-analysis.md`.
 
-The point of the first row is that a run costs the person who asked for it rather than whoever
+The point of the Claude / Antigravity subscription rows is that a run costs the person who asked for it rather than whoever
 set the server up. Signing in never puts a token in the browser: the PKCE verifier stays on the
 server for the length of the login, the credential is sealed with AES-256-GCM afterwards, and
 the only thing a page can ever read back about a stored key is a mask (`sk-ant-…9ZQ`).

@@ -1,16 +1,21 @@
 /**
- * Resolve the managed Cloud Code Assist project the way `agy` / Gemini CLI does.
+ * Resolve the managed Cloud Code Assist project the way Antigravity (`agy`) does.
  *
- * Personal and Google One accounts do not type a GCP project id. The CLI calls
+ * Personal Google AI accounts do not type a GCP project id. The CLI calls
  * `loadCodeAssist`, and if needed `onboardUser`, then uses the
  * `cloudaicompanionProject` Google returns — a managed project, not one the user owns.
  *
- * Returns null when Google refuses discovery (e.g. client TOS eligibility) so the caller
- * can still attempt `generateContent` — hard-blocking the run here was worse than #3501.
+ * Never accepts Google's enterprise shared project `aicode-consumers` (personal accounts
+ * have no IAM there). Returns null when discovery is refused or yields that project so
+ * `generateContent` can proceed without it — hard-blocking here was worse than #3501.
  */
 
 import { antigravityCliOptions } from "@flyvendedk799/ai-auth";
-import { ANTIGRAVITY_CLIENT_METADATA, antigravityRequestHeaders } from "@doceomenter/shared";
+import {
+  ANTIGRAVITY_CLIENT_METADATA,
+  antigravityRequestHeaders,
+  sanitizePersonalCloudCodeProject,
+} from "@doceomenter/shared";
 
 const FREE_TIER = "free-tier";
 const ONBOARD_POLL_MS = 2_000;
@@ -48,12 +53,12 @@ type OnboardUserResponse = {
 
 /**
  * Returns a project id suitable for `x-goog-user-project` / `generateContent.project`,
- * or null when discovery is refused / unavailable.
+ * or null when discovery is refused / unavailable / enterprise-only.
  */
 export async function ensureCodeAssistProject(
   input: EnsureCodeAssistProjectInput,
 ): Promise<string | null> {
-  const existing = input.projectId?.trim() || null;
+  const existing = sanitizePersonalCloudCodeProject(input.projectId);
   if (existing) return existing;
 
   // Dogfood / G1: `agy` often never needs loadCodeAssist for a typed project. Calling it
@@ -89,7 +94,12 @@ export async function ensureCodeAssistProject(
   }
 
   if (typeof load.cloudaicompanionProject === "string" && load.cloudaicompanionProject.trim()) {
-    return load.cloudaicompanionProject.trim();
+    const fromLoad = sanitizePersonalCloudCodeProject(load.cloudaicompanionProject);
+    if (fromLoad) return fromLoad;
+    console.error(
+      `[code-assist] loadCodeAssist returned enterprise project ${load.cloudaicompanionProject.trim()}; ignoring for personal Antigravity`,
+    );
+    return null;
   }
 
   if (load.currentTier) {
@@ -136,7 +146,7 @@ export async function ensureCodeAssistProject(
     }
   }
 
-  return lro.response?.cloudaicompanionProject?.id?.trim() || null;
+  return sanitizePersonalCloudCodeProject(lro.response?.cloudaicompanionProject?.id) || null;
 }
 
 async function postJson<T>(

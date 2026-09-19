@@ -4,8 +4,8 @@
  * `ai-auth` splits a provider from the wire it speaks — `claude-code` and `anthropic` both
  * talk to the Messages API, but only one of them bills a card — and that split is exactly the
  * distinction this app needs to show a user. Two entries per wire is not duplication in the
- * picker; it is the whole question the picker exists to ask. `gemini-cli` and `gemini` repeat
- * the same split a third time, on Google's wire.
+ * picker; it is the whole question the picker exists to ask. `gemini-cli` (Antigravity in the
+ * UI) and `gemini` repeat the same split a third time, on Google's wire.
  */
 
 import { isSubscription, wireOf, type ProviderId } from "@flyvendedk799/ai-auth/registry";
@@ -56,8 +56,9 @@ export const PROVIDERS: readonly ProviderDescriptor[] = [
   },
   {
     id: "gemini-cli",
-    label: "Gemini subscription",
-    blurb: "Sign in with your Google account. Needs a Gemini Code Assist license on that account.",
+    label: "Antigravity",
+    blurb:
+      "Personal Google AI via Antigravity — run `agy` on this machine (same idea as Claude Code), or Connect from the panel. Not for enterprise/team licenses.",
     wire: "gemini",
     kind: "subscription",
     defaults: { primary: "gemini-3.1-pro", fallback: "gemini-3-flash" },

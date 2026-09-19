@@ -226,12 +226,10 @@ function CodexNote({ status, localCliEnabled }: { status: ProviderStatus; localC
 }
 
 /**
- * Sign in to a Gemini subscription, or fall back to explaining the machine login.
- *
- * There is no library component for this the way `ClaudeTerminal` covers Claude — the OAuth
- * client this drives is Antigravity CLI's own, not something `ai-auth` ships a UI for — so the
- * same three steps Claude's terminal renders (start, show the URL, take a pasted code back) are
- * built here directly, against `/api/gemini/*`.
+ * Antigravity for a personal Google AI subscription — machine login first (like Claude Code),
+ * optional panel Connect second. There is no library terminal component the way Claude has
+ * `ClaudeTerminal`, so the same three steps (start, show URL, paste code) are built here
+ * against `/api/gemini/*`. Internal provider id remains `gemini-cli` for the registry.
  */
 function GeminiConnect({
   status,
@@ -253,8 +251,8 @@ function GeminiConnect({
     setBusy(true);
     setNote(undefined);
     try {
-      const response = await fetch("/api/gemini/login", { 
-        method: "POST", 
+      const response = await fetch("/api/gemini/login", {
+        method: "POST",
         credentials: "same-origin",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ isDogfood }),
@@ -301,22 +299,6 @@ function GeminiConnect({
     }
   }
 
-  if (status.source === "connected account") {
-    return (
-      <div className="space-y-2">
-        <p className="dm-well rounded-sm px-3.5 py-3 text-[12.5px] leading-[1.65] text-fg-muted">
-          Signed in as <span className="text-fg">{status.plan}</span>. The credential is sealed here and
-          refreshed automatically — nothing is spent unless a run uses this provider.
-        </p>
-        <button type="button" disabled={busy} onClick={() => void disconnect()} className="dm-btn-secondary h-10 px-4 text-[13px]">
-          Disconnect
-        </button>
-        <ProjectIdField status={status} onRefresh={onRefresh} />
-        {note && <p className="font-mono text-[11px] text-fg-faint">{note}</p>}
-      </div>
-    );
-  }
-
   const awaitingCode = (
     <div className="space-y-2">
       <p className="text-[12.5px] leading-[1.6] text-fg-muted">
@@ -345,41 +327,59 @@ function GeminiConnect({
           onClick={() => void complete()}
           className="dm-btn h-11 px-5 text-[13px]"
         >
-          Connect
+          Connect Antigravity
         </button>
       </div>
     </div>
   );
 
+  if (status.source === "connected account") {
+    return (
+      <div className="space-y-2">
+        <p className="dm-well rounded-sm px-3.5 py-3 text-[12.5px] leading-[1.65] text-fg-muted">
+          Antigravity signed in as <span className="text-fg">{status.plan}</span> from the panel.
+          Prefer disconnecting and using the machine <span className="text-fg">agy</span> login for
+          personal Google AI — panel OAuth can hit Google&apos;s enterprise consumer project and fail.
+        </p>
+        <button type="button" disabled={busy} onClick={() => void disconnect()} className="dm-btn-secondary h-10 px-4 text-[13px]">
+          Disconnect
+        </button>
+        <ProjectIdField status={status} onRefresh={onRefresh} />
+        {note && <p className="font-mono text-[11px] text-fg-faint">{note}</p>}
+      </div>
+    );
+  }
+
   if (status.source === "machine login") {
     return (
       <div className="space-y-4">
         <p className="dm-well rounded-sm px-3.5 py-3 text-[12.5px] leading-[1.65] text-fg-muted">
-          Using the <span className="text-fg">agy</span> login already on the machine hosting
-          DoceoMenter (signed in as {status.plan}). Nothing is stored here — the credential is
-          re-read each time, and the CLI keeps it current.
+          Using the Antigravity (<span className="text-fg">agy</span>) login already on this machine
+          (signed in as {status.plan}). Same idea as Claude Code&apos;s machine login — nothing is
+          stored here; the credential is re-read each time.
         </p>
-        
+
         <div className="space-y-2 pt-2 border-t border-line">
-            {!loginUrl ? (
-              <div className="flex flex-col gap-2">
-                <p className="text-[12.5px] leading-[1.6] text-fg-muted">
-                  You can override this by connecting your own Google account below.
-                </p>
-                <label className="flex items-center gap-2 text-[12.5px] text-fg-muted cursor-pointer">
-                  <input type="checkbox" checked={isDogfood} onChange={(e) => setIsDogfood(e.target.checked)} className="cursor-pointer" /> 
-                  Use G1 Dogfood Environment
-                </label>
-                <button 
-                  type="button" 
-                  disabled={busy} 
-                  onClick={() => void start()} 
-                  className="dm-btn h-11 px-5 text-[13px] self-start"
-                >
-                  Connect with Google
-                </button>
-              </div>
-            ) : (
+          {!loginUrl ? (
+            <div className="flex flex-col gap-2">
+              <p className="text-[12.5px] leading-[1.6] text-fg-muted">
+                Optional: Connect a different personal Google AI account from the panel (not for
+                enterprise/team licenses).
+              </p>
+              <label className="flex items-center gap-2 text-[12.5px] text-fg-muted cursor-pointer">
+                <input type="checkbox" checked={isDogfood} onChange={(e) => setIsDogfood(e.target.checked)} className="cursor-pointer" />
+                Advanced: G1 Dogfood endpoint
+              </label>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void start()}
+                className="dm-btn-secondary h-11 px-5 text-[13px] self-start"
+              >
+                Connect Antigravity in browser
+              </button>
+            </div>
+          ) : (
             awaitingCode
           )}
         </div>
@@ -389,29 +389,27 @@ function GeminiConnect({
 
   return (
     <div className="space-y-2">
-        {!loginUrl ? (
-          <div className="flex flex-col gap-2">
-            <p className="dm-well rounded-sm px-3.5 py-3 text-[12.5px] leading-[1.65] text-fg-muted">
-              Sign in with the Google account whose plan should pay for this run. This uses Antigravity
-              CLI&apos;s own Google sign-in — the run only works once that account holds a Gemini Code
-              Assist license (personal Google sign-in with no license attached is refused by Google, not
-              by DoceoMenter).
-              {!localCliEnabled ? "" : " A `agy` login on the machine hosting DoceoMenter works too, if one exists."}
-            </p>
-            <label className="flex items-center gap-2 text-[12.5px] text-fg-muted cursor-pointer">
-              <input type="checkbox" checked={isDogfood} onChange={(e) => setIsDogfood(e.target.checked)} className="cursor-pointer" /> 
-              Use G1 Dogfood Environment
-            </label>
-            <button 
-              type="button" 
-              disabled={busy} 
-              onClick={() => void start()} 
-              className="dm-btn h-11 px-5 text-[13px] self-start"
-            >
-              Connect with Google
-            </button>
-          </div>
-        ) : (
+      {!loginUrl ? (
+        <div className="flex flex-col gap-2">
+          <p className="dm-well rounded-sm px-3.5 py-3 text-[12.5px] leading-[1.65] text-fg-muted">
+            {!localCliEnabled
+              ? "Machine logins are disabled on this deployment (ALLOW_LOCAL_CLI=false). Connect Antigravity with a personal Google AI account below — enterprise/team licenses are not supported."
+              : "Sign in on the machine with Antigravity (`agy`), then reload — same smooth path as Claude Code. Or Connect below with a personal Google AI account (not enterprise/team)."}
+          </p>
+          <label className="flex items-center gap-2 text-[12.5px] text-fg-muted cursor-pointer">
+            <input type="checkbox" checked={isDogfood} onChange={(e) => setIsDogfood(e.target.checked)} className="cursor-pointer" />
+            Advanced: G1 Dogfood endpoint
+          </label>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void start()}
+            className="dm-btn h-11 px-5 text-[13px] self-start"
+          >
+            Connect Antigravity
+          </button>
+        </div>
+      ) : (
         awaitingCode
       )}
       {note && <p className="font-mono text-[11px] text-fg-faint">{note}</p>}
@@ -420,10 +418,10 @@ function GeminiConnect({
 }
 
 /**
- * Optional override for the managed Code Assist project.
+ * Optional personal GCP project override.
  *
- * Personal / Google One logins normally get a managed project automatically via
- * `loadCodeAssist` (same as `agy`). Only set this if an admin assigned a project.
+ * Antigravity normally discovers a managed project like `agy` does. Only set this to your own
+ * GCP project — never Google's enterprise shared project `aicode-consumers`.
  */
 function ProjectIdField({ status, onRefresh }: { status: ProviderStatus; onRefresh: () => void }) {
   const [value, setValue] = useState(status.projectId ?? "");
@@ -454,9 +452,9 @@ function ProjectIdField({ status, onRefresh }: { status: ProviderStatus; onRefre
   return (
     <label className="flex flex-col gap-2">
       <span className="font-mono text-[11px] tracking-label text-fg-faint">
-        GCP PROJECT ID{" "}
+        PERSONAL GCP PROJECT{" "}
         <span className="normal-case tracking-normal text-fg-faint">
-          (optional override — normally filled automatically like `agy`)
+          (optional — leave blank unless you have your own project)
         </span>
       </span>
       <div className="flex flex-wrap gap-2">
@@ -465,7 +463,7 @@ function ProjectIdField({ status, onRefresh }: { status: ProviderStatus; onRefre
           autoComplete="off"
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          placeholder="leave blank unless your admin gave you one"
+          placeholder="your-gcp-project-id"
           className="dm-input h-11 min-w-0 flex-1 font-mono text-[13px]"
         />
         <button type="button" disabled={busy} onClick={() => void save()} className="dm-btn-secondary h-11 px-5 text-[13px]">
