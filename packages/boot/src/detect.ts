@@ -2,8 +2,25 @@ import type { Analysis, BootStrategy } from "@doceomenter/shared";
 
 const DEFAULT_PORT = 5173;
 
+const STATIC_HTML_DIRS = [
+  "project",
+  "admin",
+  "client",
+  "frontend",
+  "web",
+  "www",
+  "site",
+  "static",
+  "public",
+  "docs",
+  "design",
+  "prototype",
+  "prototypes",
+] as const;
+
 export function detectStrategy(a: Analysis, dockerEnabled = false): BootStrategy {
   const pkg = a.manifests.nodePkg;
+  const packageDir = a.manifests.packageDir ?? ".";
 
   // 1. Next.js — supports both the root and the common `src/` layout.
   if (pkg && (pkg.deps.includes("next") || pkg.devDeps.includes("next"))) {
@@ -60,26 +77,23 @@ export function detectStrategy(a: Analysis, dockerEnabled = false): BootStrategy
     return { kind: "python-web", cmd: pickPythonCmd(a, "django"), port: 8000 };
   }
 
-  // 8. Node server
-  if (pkg && pkg.scripts.start) {
-    if (looksLikeServer(a)) {
-      return {
-        kind: "node-server",
-        cmd: `${detectPM(a)} run start`,
-        port: pickPortFromCode(a) ?? 3000,
-      };
-    }
+  // 8. Static HTML prototypes / sites (before node-server so design handoffs
+  // like FM-Ecommerce — HTML in project/ + Express in backend/ — get live UI shots).
+  const staticDir = findStaticHtmlDir(a);
+  if (staticDir !== undefined) {
+    return { kind: "static", dir: staticDir, port: DEFAULT_PORT };
   }
 
-  // 9. Static
-  if (a.fileIndex.some((f) => f.path === "index.html")) {
-    return { kind: "static", dir: ".", port: DEFAULT_PORT };
-  }
-  if (a.fileIndex.some((f) => f.path === "public/index.html")) {
-    return { kind: "static", dir: "public", port: DEFAULT_PORT };
-  }
-  if (a.fileIndex.some((f) => f.path === "docs/index.html")) {
-    return { kind: "static", dir: "docs", port: DEFAULT_PORT };
+  // 9. Node server (root or nested packageDir e.g. backend/)
+  if (pkg && pkg.scripts.start && looksLikeServer(a)) {
+    const pm = detectPM(a);
+    const cwd = packageDir !== "." ? packageDir : undefined;
+    return {
+      kind: "node-server",
+      cmd: `${pm} run start`,
+      port: pickPortFromCode(a) ?? 3000,
+      ...(cwd ? { cwd } : {}),
+    };
   }
 
   // 10. Electron (desktop window — not a browser URL Playwright can open yet)
@@ -111,9 +125,81 @@ export function detectStrategy(a: Analysis, dockerEnabled = false): BootStrategy
   return { kind: "unknown" };
 }
 
+/** Prefer well-known prototype/site dirs with HTML; used by prompts for live routes. */
+export function findStaticHtmlDir(a: Analysis): string | undefined {
+  const html = a.fileIndex
+    .map((f) => f.path)
+    .filter((p) => /\.html?$/i.test(p) && !p.includes("node_modules/"));
+  if (html.length === 0) return undefined;
+
+  if (html.includes("index.html")) return ".";
+  if (html.includes("public/index.html")) return "public";
+  if (html.includes("docs/index.html")) return "docs";
+
+  const counts = new Map<string, { n: number; files: string[] }>();
+  for (const p of html) {
+    const slash = p.indexOf("/");
+    if (slash < 0) continue;
+    const top = p.slice(0, slash);
+    const cur = counts.get(top) ?? { n: 0, files: [] };
+    cur.n += 1;
+    cur.files.push(p.slice(slash + 1));
+    counts.set(top, cur);
+  }
+
+  for (const dir of STATIC_HTML_DIRS) {
+    const hit = counts.get(dir);
+    if (hit && hit.n >= 1) return dir;
+  }
+
+  let best: string | undefined;
+  let bestN = 0;
+  for (const [dir, { n }] of counts) {
+    if (n > bestN) {
+      best = dir;
+      bestN = n;
+    }
+  }
+  return bestN >= 1 ? best : undefined;
+}
+
+/** Suggested live-app routes for a static HTML dir (Landing.html → /Landing.html). */
+export function suggestStaticRoutes(a: Analysis, dir: string, limit = 6): string[] {
+  const prefix = dir === "." ? "" : `${dir}/`;
+  const preferredNames = [
+    "Landing.html",
+    "index.html",
+    "Index.html",
+    "home.html",
+    "Home.html",
+    "Kategorier.html",
+    "shop.html",
+    "Shop.html",
+  ];
+  const files = a.fileIndex
+    .map((f) => f.path)
+    .filter((p) => p.startsWith(prefix) && /\.html?$/i.test(p) && !p.includes("node_modules/"))
+    .map((p) => (prefix ? p.slice(prefix.length) : p))
+    .filter((p) => p.length > 0 && !p.includes("/"));
+
+  const ordered: string[] = [];
+  for (const name of preferredNames) {
+    if (files.includes(name)) ordered.push(`/${name}`);
+  }
+  for (const f of files.sort()) {
+    const route = `/${f}`;
+    if (!ordered.includes(route) && !/404\.html?$/i.test(f)) ordered.push(route);
+  }
+  return ordered.slice(0, limit);
+}
+
 function detectPM(a: Analysis): "pnpm" | "npm" | "yarn" {
-  if (a.fileIndex.some((f) => f.path === "pnpm-lock.yaml")) return "pnpm";
-  if (a.fileIndex.some((f) => f.path === "yarn.lock")) return "yarn";
+  if (a.fileIndex.some((f) => f.path === "pnpm-lock.yaml" || f.path.endsWith("/pnpm-lock.yaml"))) {
+    return "pnpm";
+  }
+  if (a.fileIndex.some((f) => f.path === "yarn.lock" || f.path.endsWith("/yarn.lock"))) {
+    return "yarn";
+  }
   return "npm";
 }
 

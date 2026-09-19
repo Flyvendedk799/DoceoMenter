@@ -21,6 +21,8 @@ export type Manifest = {
     devDeps: string[];
     engines?: Record<string, string>;
   };
+  /** Directory containing nodePkg relative to repo root (e.g. "backend"). Defaults to ".". */
+  packageDir?: string;
   pythonPyproject?: { name: string; deps: string[] };
   pythonRequirements?: string[];
   cargoToml?: { name: string };
@@ -67,7 +69,7 @@ export type BootStrategy =
   | { kind: "vite"; pkgManager: "pnpm" | "npm" | "yarn"; port: number }
   | { kind: "cra"; pkgManager: "pnpm" | "npm" | "yarn"; port: number }
   | { kind: "astro"; pkgManager: "pnpm" | "npm" | "yarn"; port: number }
-  | { kind: "node-server"; cmd: string; port: number }
+  | { kind: "node-server"; cmd: string; port: number; cwd?: string }
   | { kind: "python-web"; cmd: string; port: number }
   | { kind: "static"; dir: string; port: number }
   | { kind: "docker"; composeService?: string; port: number }

@@ -91,9 +91,20 @@ export async function analyzeRepo(opts: {
 
   const manifests: Manifest = {};
 
-  if (existsSync(join(repoDir, "package.json"))) {
+  const packageCandidates = [
+    "package.json",
+    "backend/package.json",
+    "server/package.json",
+    "api/package.json",
+    "app/package.json",
+    "apps/web/package.json",
+    "apps/api/package.json",
+  ];
+  for (const rel of packageCandidates) {
+    const full = join(repoDir, rel);
+    if (!existsSync(full)) continue;
     try {
-      const pkgRaw = await readFile(join(repoDir, "package.json"), "utf-8");
+      const pkgRaw = await readFile(full, "utf-8");
       const pkg = JSON.parse(pkgRaw) as {
         name?: string;
         scripts?: Record<string, string>;
@@ -122,8 +133,12 @@ export async function analyzeRepo(opts: {
       if (pkg.module !== undefined) node.module = pkg.module;
       if (pkg.exports !== undefined) node.exports = pkg.exports;
       manifests.nodePkg = node;
+      const dir = rel.includes("/") ? rel.replace(/\/package\.json$/, "") : ".";
+      if (dir !== ".") manifests.packageDir = dir;
+      opts.log(`[analyze] package.json from ${rel}`);
+      break;
     } catch (e) {
-      opts.log(`[analyze] package.json parse failed: ${(e as Error).message}`);
+      opts.log(`[analyze] ${rel} parse failed: ${(e as Error).message}`);
     }
   }
   if (existsSync(join(repoDir, "pyproject.toml"))) {
@@ -261,6 +276,15 @@ function computeSignals(
     ...(m.nodePkg?.deps ?? []),
     ...(m.nodePkg?.devDeps ?? []),
   ]);
+  const htmlPaths = paths.filter((p) => /\.html?$/i.test(p));
+  const hasHtmlPrototype =
+    htmlPaths.length > 0 &&
+    htmlPaths.some(
+      (p) =>
+        !p.includes("node_modules/") &&
+        !p.includes("coverage/") &&
+        !p.endsWith("404.html"),
+    );
   const hasFrontendIndicator =
     deps.has("react") ||
     deps.has("vue") ||
@@ -271,7 +295,8 @@ function computeSignals(
     deps.has("next") ||
     deps.has("astro") ||
     paths.includes("index.html") ||
-    paths.includes("public/index.html");
+    paths.includes("public/index.html") ||
+    hasHtmlPrototype;
   const hasBackendIndicator =
     deps.has("express") ||
     deps.has("fastify") ||
@@ -279,7 +304,8 @@ function computeSignals(
     deps.has("hono") ||
     deps.has("@nestjs/core") ||
     !!m.pythonPyproject ||
-    !!m.pythonRequirements;
+    !!m.pythonRequirements ||
+    paths.some((p) => /^(backend|server|api)\//.test(p) && /\.(js|ts|mjs|cjs)$/.test(p));
   const np = m.nodePkg as { bin?: unknown; main?: string; module?: string; exports?: unknown } | undefined;
   const hasCLI = !!np?.bin;
   const hasElectron =
@@ -302,7 +328,7 @@ function computeSignals(
   else if (deps.has("vite")) framework = "vite";
   else if (deps.has("react-scripts")) framework = "cra";
   else if (deps.has("express")) framework = "express";
-  else if (paths.includes("index.html")) framework = "static";
+  else if (hasHtmlPrototype || paths.includes("index.html")) framework = "static";
 
   void languages;
   return {
