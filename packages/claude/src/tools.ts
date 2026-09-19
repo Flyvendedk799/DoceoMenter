@@ -18,7 +18,7 @@ const viewportSchema = {
 const conceptTool: Tool = {
   name: "submit_concept",
   description:
-    "Submit the project's concept (what / why / vision / audience). All fields must be grounded in the repo-context.",
+    "Submit the end-user product concept (what / why / vision / audience). Prefer product-surfaces over scaffolding/handoff README narrative. All fields must be grounded in the repo-context.",
   input_schema: {
     type: "object",
     additionalProperties: false,
@@ -236,7 +236,7 @@ const captionsTool: Tool = {
 const caseBriefTool: Tool = {
   name: "submit_case_brief",
   description:
-    "Submit a reference-grade case brief grounded in repo evidence and capture results. This is the quality contract used by reports and decks.",
+    "Submit a reference-grade case brief about the end-user PRODUCT (not packaging/handoff meta). Grounded in product-surfaces, repo evidence, and capture results. This is the quality contract used by reports and decks.",
   input_schema: {
     type: "object",
     additionalProperties: false,

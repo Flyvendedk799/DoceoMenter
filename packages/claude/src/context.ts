@@ -5,6 +5,7 @@ const FILE_INDEX_BUDGET = 200; // entries
 const MAX_LANGUAGES = 40;
 const MAX_DEPS = 120;
 const MAX_ENTRYPOINTS = 40;
+const PRODUCT_SURFACE_BUDGET = 8;
 
 export function buildRepoContext(a: Analysis): string {
   // Cap every unbounded collection so a pathological repo (thousands of deps /
@@ -21,6 +22,17 @@ export function buildRepoContext(a: Analysis): string {
 
   const readmeRaw = neutralizeTags(a.readme?.rawTrimmed?.slice(0, README_BUDGET) ?? "");
 
+  const productSurfaces = (a.productSurfaces ?? [])
+    .slice(0, PRODUCT_SURFACE_BUDGET)
+    .map((s) => {
+      const bits = [`path=${s.path}`, `kind=${s.kind}`];
+      if (s.title) bits.push(`title=${JSON.stringify(s.title)}`);
+      if (s.description) bits.push(`description=${JSON.stringify(s.description)}`);
+      bits.push(`text=${JSON.stringify(s.text)}`);
+      return `- ${bits.join(" | ")}`;
+    })
+    .join("\n");
+
   const top = neutralizeTags(
     a.fileIndex
       .slice()
@@ -30,18 +42,28 @@ export function buildRepoContext(a: Analysis): string {
       .join("\n"),
   );
 
-  return [
+  const parts = [
     `<repo-context>`,
     `<analysis>${JSON.stringify(trimmedAnalysis, null, 2)}</analysis>`,
-    `<readme>${readmeRaw}</readme>`,
-    `<file-index>${top}</file-index>`,
-    `</repo-context>`,
-  ].join("\n");
+  ];
+  if (productSurfaces) {
+    parts.push(
+      `<product-surfaces>`,
+      `Use these as primary evidence for product identity (brand, domain, user-facing purpose).`,
+      neutralizeTags(productSurfaces),
+      `</product-surfaces>`,
+    );
+  }
+  parts.push(`<readme>${readmeRaw}</readme>`, `<file-index>${top}</file-index>`, `</repo-context>`);
+  return parts.join("\n");
 }
 
 /** Prevent untrusted content from closing/opening context tags to inject instructions. */
 function neutralizeTags(s: string): string {
-  return s.replace(/<(\/?)(repo-context|readme|file-index|analysis)>/gi, "‹$1$2›");
+  return s.replace(
+    /<(\/?)(repo-context|readme|file-index|analysis|product-surfaces)>/gi,
+    "‹$1$2›",
+  );
 }
 
 function capRecord(rec: Record<string, number>, max: number): Record<string, number> {
@@ -73,15 +95,20 @@ function importance(p: string): number {
   let s = 0;
   if (/^(README|readme)/.test(p)) s += 100;
   if (/^package\.json$/.test(p)) s += 90;
+  if (/backend\/package\.json$/.test(p)) s += 85;
   if (/^pyproject\.toml$/.test(p)) s += 90;
   if (/^Cargo\.toml$/.test(p)) s += 90;
   if (/^Dockerfile$/.test(p)) s += 80;
   if (/^docker-compose\.ya?ml$/.test(p)) s += 80;
+  if (/^project\/Landing\.html$/i.test(p)) s += 95;
+  if (/^project\/.+\.html$/i.test(p)) s += 70;
+  if (/Landing\.html$/i.test(p)) s += 75;
   if (/^src\//.test(p)) s += 50;
   if (/^app\//.test(p)) s += 50;
   if (/^pages\//.test(p)) s += 50;
   if (/^lib\//.test(p)) s += 40;
-  if (/index\.(ts|tsx|js|jsx)$/.test(p)) s += 30;
+  if (/index\.(ts|tsx|js|jsx|html)$/.test(p)) s += 30;
+  if (/^chats\//.test(p)) s += 25;
   if (/^tests?\//.test(p)) s -= 20;
   if (/node_modules/.test(p)) s -= 1000;
   if (/^\./.test(p)) s -= 10;

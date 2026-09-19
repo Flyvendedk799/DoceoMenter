@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { join, relative } from "node:path";
 import { execa } from "execa";
 import type { Analysis, Manifest, Signals } from "@doceomenter/shared";
+import { collectProductSurfaces } from "./productSurfaces.js";
 
 const FILE_INDEX_CAP = 2000;
 const README_CAP = 16_000;
@@ -203,6 +204,12 @@ export async function analyzeRepo(opts: {
 
   const entrypoints = collectEntrypoints(manifests, fileIndex.map((f) => f.path));
   const signals = computeSignals(manifests, fileIndex.map((f) => f.path), languages);
+  const productSurfaces = await collectProductSurfaces({
+    repoDir,
+    fileIndex,
+    manifests,
+    log: opts.log,
+  });
 
   return {
     repo: { owner: opts.repoOwner, name: opts.repoName, ref: opts.ref, commitSha: opts.commitSha },
@@ -212,6 +219,7 @@ export async function analyzeRepo(opts: {
     manifests,
     entrypoints,
     ...(readme ? { readme } : {}),
+    ...(productSurfaces.length > 0 ? { productSurfaces } : {}),
     fileIndex,
     signals,
   };

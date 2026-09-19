@@ -111,4 +111,29 @@ describe("fixture claude client", () => {
     expect(captions.length).toBe(okCount);
     for (const c of captions) expect(CaptionSchema.parse(c)).toBeTruthy();
   });
+
+  it("prefers product-surface title over handoff README for concept purpose", async () => {
+    const client = createFixtureClient();
+    const { concept } = await client.draftConceptAndPlan(
+      {
+        ...baseAnalysis,
+        readme: {
+          path: "README.md",
+          firstNHeadings: ["CODING AGENTS: READ THIS FIRST"],
+          rawTrimmed: "# CODING AGENTS\nHandoff bundle for implementing designs.",
+        },
+        productSurfaces: [
+          {
+            path: "project/Landing.html",
+            kind: "html-identity",
+            title: "Futurematch — Danmarks kursusmarkedsplads",
+            text: "Futurematch samler kurser fra Danmarks bedste udbydere ét sted.",
+          },
+        ],
+      },
+      defaultGuidance,
+    );
+    expect(concept.what).toMatch(/Futurematch|kursusmarkedsplads/i);
+    expect(concept.what).not.toMatch(/CODING AGENTS/i);
+  });
 });
