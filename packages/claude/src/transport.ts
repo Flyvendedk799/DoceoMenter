@@ -442,6 +442,7 @@ function geminiTransport(options: TransportOptions): Transport {
         refreshToken: null,
         expiresAt: 0,
         email: null,
+        isDogfood: (credential as any).isDogfood,
       })
     : antigravityKeyOptions((credential as { key: string }).key);
 
