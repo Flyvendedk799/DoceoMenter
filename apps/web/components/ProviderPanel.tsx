@@ -64,20 +64,6 @@ export function ProviderPanel({
     void refresh();
   }, [refresh]);
 
-  // The chooser display falls back to `selected.defaultModel` when `value.model` is missing,
-  // which previously meant the UI could show Gemini 3.1 Pro while the POST omitted `model`
-  // and the worker used a stale env primary/fallback (e.g. gemini-1.5-flash). Pin the model
-  // into the preference whenever the panel knows which provider is selected.
-  useEffect(() => {
-    if (!selected) return;
-    const modelOk = Boolean(value.model && selected.models.some((m) => m.id === value.model));
-    if (modelOk) return;
-    chosen.current = true;
-    const next = { provider: value.provider, model: selected.defaultModel };
-    onChange(next);
-    window.localStorage.setItem(PREFERENCE_KEY, JSON.stringify(next));
-  }, [selected, value.model, value.provider, onChange]);
-
   // The chosen provider is a preference, not a secret, so the browser is the right place for
   // it. Everything that could spend money now lives on the server.
   useEffect(() => {
@@ -104,6 +90,20 @@ export function ProviderPanel({
   };
 
   const selected = status?.providers?.find((p) => p.id === value.provider);
+
+  // The chooser display falls back to `selected.defaultModel` when `value.model` is missing,
+  // which previously meant the UI could show Gemini 3.1 Pro while the POST omitted `model`
+  // and the worker used a stale env primary/fallback (e.g. gemini-1.5-flash). Pin the model
+  // into the preference whenever the panel knows which provider is selected.
+  useEffect(() => {
+    if (!selected) return;
+    const modelOk = Boolean(value.model && selected.models.some((m) => m.id === value.model));
+    if (modelOk) return;
+    chosen.current = true;
+    const next = { provider: value.provider, model: selected.defaultModel };
+    onChange(next);
+    window.localStorage.setItem(PREFERENCE_KEY, JSON.stringify(next));
+  }, [selected, value.model, value.provider, onChange]);
 
   // Report the selected credential upward so a collapsed disclosure can say what will be
   // charged without opening. Kept in a ref: the parent passes a setState and re-renders on
