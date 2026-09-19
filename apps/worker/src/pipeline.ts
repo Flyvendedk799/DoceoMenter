@@ -411,7 +411,10 @@ async function resolveCredential(opts: {
           : credential.source === "account"
             ? "provider-panel connect"
             : credential.source;
-      opts.log(`[auth] Antigravity account=${account} via=${via}`);
+      const identityLine = `[auth] Antigravity account=${account} via=${via}`;
+      opts.log(identityLine);
+      // Also stdout: ServerHoster service logs only see process stdout/stderr, not the run bus.
+      console.info(identityLine);
       opts.log(
         `[auth] antigravity project=${credential.projectId ?? "(none)"} dogfood=${credential.isDogfood ? "yes" : "no"}`,
       );
