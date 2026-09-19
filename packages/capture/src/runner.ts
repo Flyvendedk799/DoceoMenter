@@ -12,12 +12,15 @@ import { launchBrowser, type BrowserHandle } from "./browser.js";
 import { evaluateImageQuality } from "./quality.js";
 import { extractPosterFrame, hasFfmpeg, transcodeWebmToMp4 } from "./video.js";
 import { renderMermaidToPng } from "./mermaid.js";
+import { captureCliLiveShot, type CliCaptureContext } from "./cliCapture.js";
 
 const SHOT_TIMEOUT_MS = 30_000;
 const NAV_TIMEOUT_MS = 8_000;
 
 export type CaptureContext = {
   liveAppUrl?: string;
+  /** When set, live-app shots without a browser URL are captured as CLI terminal screenshots. */
+  cliLive?: CliCaptureContext;
   ownerRepo?: string; // "owner/repo"
   outDir: string;
   log: (line: string) => void;
@@ -77,14 +80,23 @@ async function captureOne(
   ctx: CaptureContext,
 ): Promise<CaptureManifestEntry> {
   if (shot.kind === "screenshot" && shot.target === "live-app") {
-    if (!ctx.liveAppUrl) {
-      return { shotId: shot.id, shot, status: "skipped", failureReason: "no live app URL" };
+    if (ctx.liveAppUrl) {
+      return captureLiveAppScreenshot(handle, shot, ctx, ctx.liveAppUrl);
     }
-    return captureLiveAppScreenshot(handle, shot, ctx, ctx.liveAppUrl);
+    if (ctx.cliLive) {
+      return captureCliLiveShot(handle, shot, ctx.cliLive);
+    }
+    return { shotId: shot.id, shot, status: "skipped", failureReason: "no live app URL" };
   }
   if (shot.kind === "video" && shot.target === "live-app") {
     if (!ctx.liveAppUrl) {
-      return { shotId: shot.id, shot, status: "skipped", failureReason: "no live app URL" };
+      // CLI/Electron cannot record Playwright video of a browser URL.
+      return {
+        shotId: shot.id,
+        shot,
+        status: "skipped",
+        failureReason: ctx.cliLive ? "cli surface has no browser video" : "no live app URL",
+      };
     }
     return captureLiveAppVideo(handle, shot, ctx, ctx.liveAppUrl);
   }

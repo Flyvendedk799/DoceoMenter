@@ -1,7 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { boot, detectStrategy } from "@doceomenter/boot";
-import { postProcessAssets, runCapturePlan } from "@doceomenter/capture";
+import { postProcessAssets, runCapturePlan, deriveCliCommands } from "@doceomenter/capture";
 import { createClaudeClient } from "@doceomenter/claude";
 import {
   CredentialError,
@@ -20,6 +20,7 @@ import {
   STAGE_NAMES,
   resolveRunSpec,
   redactSpec,
+  resolveEffectiveCaptureSurface,
   type Analysis,
   type CaptureManifest,
   type GeneratedContent,
@@ -30,6 +31,10 @@ import {
 } from "@doceomenter/shared";
 import { cloneRepo } from "./stages/01-clone.js";
 import { analyzeRepo } from "./stages/02-analyze.js";
+import {
+  shouldAttemptCliLiveCapture,
+  shouldHardFailMissingLiveApp,
+} from "./captureHardFail.js";
 import type { WorkerConfig } from "./config.js";
 import type { RunStore } from "./runStore.js";
 import type { RunEventBus } from "./eventBus.js";
@@ -184,6 +189,25 @@ export async function runPipeline(opts: {
     };
     await store.write(runId, state);
 
+    // 4. Detect runtime before drafting the capture plan so the model knows the surface.
+    await setStage("detect-runtime", { status: "running", message: "project type" });
+    const strategy = detectStrategy(analysis, config.ENABLE_DOCKER_IN_DOCKER);
+    const captureSurface = resolveEffectiveCaptureSurface({
+      override: resolved.captureSurface,
+      strategyKind: strategy.kind,
+      hasFrontend: analysis.signals.hasFrontend,
+      hasCLI: analysis.signals.hasCLI,
+      hasElectron: analysis.signals.hasElectron,
+    });
+    await bus.log(
+      runId,
+      `[detect] strategy=${strategy.kind} surface=${captureSurface} liveMedia=${resolved.liveMedia} planMode=${resolved.capturePlanMode}`,
+    );
+    await setStage("detect-runtime", {
+      status: "done",
+      message: `${strategy.kind} · ${captureSurface}`,
+    });
+
     await setStage("draft-concept", {
       status: "running",
       message: credential
@@ -202,28 +226,83 @@ export async function runPipeline(opts: {
       configureAt: "the provider panel",
       logger: (l) => void bus.log(runId, l),
     });
-    const { concept, capturePlan } = await ai.draftConceptAndPlan(analysis, {
+    let { concept, capturePlan } = await ai.draftConceptAndPlan(analysis, {
       includeVideo: resolved.includeVideo,
       outputStyle: resolved.outputStyle,
+      liveMedia: resolved.liveMedia,
+      captureSurface,
+      capturePlanMode: resolved.capturePlanMode,
+      captureTargets: resolved.captureTargets,
+      captureBrief: resolved.captureBrief,
     });
+    // Ensure CLI/Electron runs that want live media actually have a live-app shot to capture.
+    if (
+      resolved.liveMedia !== "skip" &&
+      (captureSurface === "cli" || captureSurface === "electron") &&
+      !capturePlan.shots.some((s) => "target" in s && s.target === "live-app")
+    ) {
+      const cmd =
+        resolved.captureTargets?.[0] ??
+        deriveCliCommands({
+          bin: (analysis.manifests.nodePkg as { bin?: unknown } | undefined)?.bin,
+          packageName: analysis.manifests.nodePkg?.name,
+        })[0] ??
+        "--help";
+      capturePlan = {
+        shots: [
+          {
+            id: "cli-live",
+            kind: "screenshot" as const,
+            target: "live-app" as const,
+            route: cmd,
+            viewport: { w: 1280, h: 800 },
+            caption: resolved.captureBrief || `Live CLI: ${cmd}`,
+            importance: 1 as const,
+          },
+          ...capturePlan.shots,
+        ].slice(0, 10),
+      };
+    }
+    if (resolved.liveMedia === "skip") {
+      capturePlan = {
+        shots: capturePlan.shots.filter(
+          (s) => !("target" in s && s.target === "live-app"),
+        ),
+      };
+      if (capturePlan.shots.length === 0) {
+        capturePlan = {
+          shots: [
+            {
+              id: "github-readme",
+              kind: "screenshot" as const,
+              target: "github-readme" as const,
+              caption: "The repository's README on GitHub.",
+              importance: 1 as const,
+            },
+          ],
+        };
+      }
+    }
     await writeFile(join(dir, "plan.json"), JSON.stringify({ concept, capturePlan }, null, 2));
     await setStage("draft-concept", { status: "done", message: `${capturePlan.shots.length} shots planned` });
 
-    // 4. Detect runtime
-    await setStage("detect-runtime", { status: "running", message: "project type" });
-    const strategy = detectStrategy(analysis, config.ENABLE_DOCKER_IN_DOCKER);
-    await bus.log(runId, `[detect] strategy=${strategy.kind}`);
-    await setStage("detect-runtime", { status: "done", message: strategy.kind });
-
-    // 5. Boot (skipped for cli/library/unknown OR when bootApp=false)
+    // 5. Boot (skipped for non-browser surfaces OR when bootApp=false / liveMedia=skip)
     let liveAppUrl: string | undefined;
-    if (
+    const skipBoot =
       !resolved.bootApp ||
+      resolved.liveMedia === "skip" ||
+      captureSurface === "cli" ||
+      captureSurface === "electron" ||
+      captureSurface === "none" ||
       strategy.kind === "cli" ||
+      strategy.kind === "electron" ||
       strategy.kind === "library" ||
-      strategy.kind === "unknown"
-    ) {
-      await setStage("boot", { status: "skipped", message: `strategy=${strategy.kind}` });
+      strategy.kind === "unknown";
+    if (skipBoot) {
+      await setStage("boot", {
+        status: "skipped",
+        message: `strategy=${strategy.kind} surface=${captureSurface}`,
+      });
     } else {
       await setStage("boot", { status: "running", message: `booting ${strategy.kind}` });
       try {
@@ -236,11 +315,11 @@ export async function runPipeline(opts: {
         bootedKill = booted.kill;
         await setStage("boot", { status: "done", message: liveAppUrl });
       } catch (e) {
-        const needsLiveApp = capturePlan.shots.some(
-          (shot) => "target" in shot && shot.target === "live-app",
-        );
+        const needsLiveApp =
+          resolved.liveMedia === "required" ||
+          capturePlan.shots.some((shot) => "target" in shot && shot.target === "live-app");
         const message = (e as Error).message;
-        if (needsLiveApp) {
+        if (needsLiveApp && resolved.liveMedia !== "skip") {
           await setStage("boot", { status: "failed", message });
           console.error(`[boot] hard fail (live-app shots planned): ${message}`);
           throw new Error(
@@ -263,8 +342,34 @@ export async function runPipeline(opts: {
 
     // 6. Capture
     await setStage("capture", { status: "running", message: `${capturePlan.shots.length} shots` });
+    const pkg = analysis.manifests.nodePkg as
+      | { bin?: unknown; name?: string }
+      | undefined;
+    const cliCommands = deriveCliCommands({
+      bin: pkg?.bin,
+      packageName: pkg?.name,
+      captureTargets: resolved.captureTargets,
+    });
+    const useCliLive = shouldAttemptCliLiveCapture({
+      liveMedia: resolved.liveMedia,
+      surface: captureSurface,
+      liveAppUrl,
+    });
+    if (useCliLive) {
+      await bus.log(runId, `[capture] CLI/TUI live via terminal screenshots (${cliCommands[0]})`);
+    }
     const captureManifest: CaptureManifest = await runCapturePlan(capturePlan, {
       ...(liveAppUrl ? { liveAppUrl } : {}),
+      ...(useCliLive
+        ? {
+            cliLive: {
+              repoDir,
+              commands: cliCommands,
+              outDir: join(dir, "assets"),
+              log: (l: string) => void bus.log(runId, l),
+            },
+          }
+        : {}),
       ownerRepo: `${owner}/${name}`,
       outDir: join(dir, "assets"),
       log: (l) => void bus.log(runId, l),
@@ -284,16 +389,29 @@ export async function runPipeline(opts: {
         "Media capture produced no successful shots — Playwright/media capture is required.",
       );
     }
-    if (plannedLive > 0 && liveOk === 0) {
+    if (
+      shouldHardFailMissingLiveApp({
+        plannedLive,
+        liveOk,
+        liveAppUrl,
+        liveMedia: resolved.liveMedia,
+        surface: captureSurface,
+      })
+    ) {
       await setStage("capture", {
         status: "failed",
         message: `0/${plannedLive} live-app ok`,
       });
       console.error(
-        `[capture] hard fail: planned ${plannedLive} live-app shot(s) but none succeeded`,
+        `[capture] hard fail: planned ${plannedLive} live-app shot(s) but none succeeded (surface=${captureSurface} url=${liveAppUrl ?? "none"})`,
       );
       throw new Error(
-        `Media capture failed for live-app shots (0/${plannedLive} ok) — Playwright capture is required.`,
+        `Media capture failed for live-app shots (0/${Math.max(plannedLive, 1)} ok) — live media is ${resolved.liveMedia} for surface=${captureSurface}.`,
+      );
+    }
+    if (plannedLive > 0 && liveOk === 0 && !liveAppUrl && !useCliLive) {
+      console.error(
+        `[capture] no live capture for ${plannedLive} shot(s) (strategy=${strategy.kind} surface=${captureSurface}); continuing`,
       );
     }
     if (okCount < captureManifest.entries.length) {

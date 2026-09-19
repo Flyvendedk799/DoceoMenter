@@ -12,6 +12,26 @@ const OUTPUT_STYLES = [
   { value: "deep", label: "Deep", caption: "reference case" },
 ] as const;
 
+const LIVE_MEDIA = [
+  { value: "if-possible", label: "If possible", caption: "best effort" },
+  { value: "required", label: "Required", caption: "fail if missing" },
+  { value: "skip", label: "Skip", caption: "no live media" },
+] as const;
+
+const SURFACES = [
+  { value: "auto", label: "Auto" },
+  { value: "browser", label: "Browser" },
+  { value: "cli", label: "CLI / TUI" },
+  { value: "electron", label: "Electron" },
+  { value: "none", label: "None" },
+] as const;
+
+const PLAN_MODES = [
+  { value: "auto", label: "Let AI choose", caption: "model plans shots" },
+  { value: "guided", label: "Guided", caption: "routes / commands" },
+  { value: "brief", label: "Free-text", caption: "describe what to show" },
+] as const;
+
 export function UrlForm() {
   const router = useRouter();
   const [url, setUrl] = useState("");
@@ -19,6 +39,13 @@ export function UrlForm() {
   const [outputStyle, setOutputStyle] = useState<"concise" | "standard" | "deep">("standard");
   const [includeVideo, setIncludeVideo] = useState(true);
   const [bootApp, setBootApp] = useState(true);
+  const [liveMedia, setLiveMedia] = useState<"required" | "if-possible" | "skip">("if-possible");
+  const [captureSurface, setCaptureSurface] = useState<
+    "auto" | "browser" | "electron" | "cli" | "none"
+  >("auto");
+  const [capturePlanMode, setCapturePlanMode] = useState<"auto" | "guided" | "brief">("auto");
+  const [captureTargetsText, setCaptureTargetsText] = useState("");
+  const [captureBrief, setCaptureBrief] = useState("");
   // Opens on the metered provider because that is the one option that always *works*: with no
   // key anywhere it degrades to the deterministic fixture client, so a first visit with nothing
   // configured still produces a pack. The panel moves this to whatever is actually connected.
@@ -37,6 +64,11 @@ export function UrlForm() {
     }
     setSubmitting(true);
     try {
+      const captureTargets = captureTargetsText
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .slice(0, 20);
       const res = await fetch("/api/runs", {
         method: "POST",
         credentials: "same-origin",
@@ -47,6 +79,15 @@ export function UrlForm() {
           outputStyle,
           includeVideo,
           bootApp,
+          liveMedia,
+          captureSurface,
+          capturePlanMode,
+          ...(capturePlanMode === "guided" && captureTargets.length > 0
+            ? { captureTargets }
+            : {}),
+          ...(capturePlanMode === "brief" && captureBrief.trim()
+            ? { captureBrief: captureBrief.trim().slice(0, 2000) }
+            : {}),
           provider: choice.provider,
           // Always send an explicit model when one is known — omitting it lets a stale
           // server GEMINI_MODEL_* env override what the panel showed.
@@ -65,6 +106,9 @@ export function UrlForm() {
       setSubmitting(false);
     }
   }
+
+  const liveLabel =
+    liveMedia === "skip" ? "no live media" : liveMedia === "required" ? "live required" : "live if possible";
 
   return (
     <form onSubmit={onSubmit} className="w-full max-w-[720px]">
@@ -93,7 +137,9 @@ export function UrlForm() {
       <div className="mt-3.5 flex flex-wrap gap-x-6 gap-y-1.5 pl-1 font-mono text-[11.5px] text-fg-faint">
         <span>BYOK · Claude or OpenAI</span>
         <span>No key → fixture mode</span>
-        <span>Screenshots {includeVideo ? "+ video" : "only"}</span>
+        <span>
+          Screenshots {includeVideo ? "+ video" : "only"} · {liveLabel}
+        </span>
       </div>
 
       {error && (
@@ -148,11 +194,117 @@ export function UrlForm() {
             </label>
 
             <div className="flex flex-col gap-2">
-              <span className="font-mono text-[11px] tracking-label text-fg-faint">CAPTURE</span>
+              <span className="font-mono text-[11px] tracking-label text-fg-faint">MEDIA TOGGLES</span>
               <Toggle label="Include video walkthrough" checked={includeVideo} onChange={setIncludeVideo} />
-              <Toggle label="Boot the app" checked={bootApp} onChange={setBootApp} />
+              <Toggle label="Boot browser app" checked={bootApp} onChange={setBootApp} />
             </div>
           </div>
+
+          <fieldset className="m-0 border-0 p-0">
+            <legend className="mb-2 font-mono text-[11px] tracking-label text-fg-faint">
+              LIVE PRODUCT MEDIA
+            </legend>
+            <p className="mb-3 mt-0 text-[12.5px] leading-[1.55] text-fg-faint">
+              Browser apps get Playwright screenshots. CLI/TUI gets a terminal capture of real
+              command output. Electron is detected; window capture is not ready yet, so we fall
+              back to CLI/dev commands when possible.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {LIVE_MEDIA.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setLiveMedia(opt.value)}
+                  aria-pressed={liveMedia === opt.value}
+                  className={`min-w-[120px] flex-1 rounded-sm border px-3 py-2.5 text-left transition-[border-color,background] duration-control ease-house ${
+                    liveMedia === opt.value
+                      ? "border-accent/50 bg-accent/[.08] text-fg"
+                      : "border-line bg-ink-900 text-fg-muted hover:border-white/25"
+                  }`}
+                >
+                  <span className="block text-[13px] font-semibold">{opt.label}</span>
+                  <span className="mt-0.5 block font-mono text-[11px] text-fg-faint">{opt.caption}</span>
+                </button>
+              ))}
+            </div>
+          </fieldset>
+
+          <fieldset className="m-0 border-0 p-0">
+            <legend className="mb-2 font-mono text-[11px] tracking-label text-fg-faint">
+              PRODUCT SURFACE
+            </legend>
+            <div className="flex flex-wrap gap-2">
+              {SURFACES.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setCaptureSurface(opt.value)}
+                  aria-pressed={captureSurface === opt.value}
+                  className={`rounded-sm border px-3 py-2 text-[13px] transition-[border-color,background] duration-control ease-house ${
+                    captureSurface === opt.value
+                      ? "border-accent/50 bg-accent/[.08] text-fg"
+                      : "border-line bg-ink-900 text-fg-muted hover:border-white/25"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+
+          <fieldset className="m-0 border-0 p-0">
+            <legend className="mb-2 font-mono text-[11px] tracking-label text-fg-faint">
+              CAPTURE PLAN
+            </legend>
+            <div className="mb-3 flex flex-wrap gap-2">
+              {PLAN_MODES.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setCapturePlanMode(opt.value)}
+                  aria-pressed={capturePlanMode === opt.value}
+                  className={`min-w-[120px] flex-1 rounded-sm border px-3 py-2.5 text-left transition-[border-color,background] duration-control ease-house ${
+                    capturePlanMode === opt.value
+                      ? "border-accent/50 bg-accent/[.08] text-fg"
+                      : "border-line bg-ink-900 text-fg-muted hover:border-white/25"
+                  }`}
+                >
+                  <span className="block text-[13px] font-semibold">{opt.label}</span>
+                  <span className="mt-0.5 block font-mono text-[11px] text-fg-faint">{opt.caption}</span>
+                </button>
+              ))}
+            </div>
+
+            {capturePlanMode === "guided" && (
+              <label className="flex flex-col gap-2">
+                <span className="font-mono text-[11px] tracking-label text-fg-faint">
+                  TARGETS (one per line — routes, CLI commands, or window hints)
+                </span>
+                <textarea
+                  value={captureTargetsText}
+                  onChange={(e) => setCaptureTargetsText(e.target.value)}
+                  rows={4}
+                  placeholder={"/\n/dashboard\nnode dist/cli.js --help"}
+                  className="dm-input min-h-[96px] resize-y py-3 font-mono text-[12.5px] leading-[1.5]"
+                />
+              </label>
+            )}
+
+            {capturePlanMode === "brief" && (
+              <label className="flex flex-col gap-2">
+                <span className="font-mono text-[11px] tracking-label text-fg-faint">
+                  FREE-TEXT BRIEF
+                </span>
+                <textarea
+                  value={captureBrief}
+                  onChange={(e) => setCaptureBrief(e.target.value)}
+                  rows={4}
+                  placeholder="Show the OAuth paste flow in the terminal, then the connected state."
+                  className="dm-input min-h-[96px] resize-y py-3 text-[13px] leading-[1.55]"
+                />
+              </label>
+            )}
+          </fieldset>
 
           <p className="m-0 text-[13px] leading-[1.65] text-fg-faint">
             Credentials stay on the server: a connected subscription and a stored key are both
@@ -184,7 +336,7 @@ function Toggle({
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        className="h-4 w-4 accent-[color:var(--accent)]"
+        className="h-4 w-4 accent-[var(--accent)]"
       />
     </label>
   );

@@ -30,6 +30,7 @@ export async function boot(opts: BootOptions): Promise<BootedApp> {
     case "docker":
       return bootDockerCompose(strategy.composeService, strategy.port, repoDir, log);
     case "cli":
+    case "electron":
     case "library":
     case "unknown":
       return bootNoop(repoDir, log);

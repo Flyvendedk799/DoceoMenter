@@ -82,7 +82,15 @@ export function detectStrategy(a: Analysis, dockerEnabled = false): BootStrategy
     return { kind: "static", dir: "docs", port: DEFAULT_PORT };
   }
 
-  // 10. CLI
+  // 10. Electron (desktop window — not a browser URL Playwright can open yet)
+  if (a.signals.hasElectron) {
+    return { kind: "electron" };
+  }
+  if (pkg && (pkg.deps.includes("electron") || pkg.devDeps.includes("electron"))) {
+    return { kind: "electron" };
+  }
+
+  // 11. CLI
   if (pkg && (pkg as { bin?: unknown }).bin !== undefined) {
     return { kind: "cli" };
   }
@@ -90,7 +98,7 @@ export function detectStrategy(a: Analysis, dockerEnabled = false): BootStrategy
     return { kind: "cli" };
   }
 
-  // 11. Library
+  // 12. Library
   if (pkg) {
     const p = pkg as { main?: string; module?: string; exports?: unknown };
     if (p.main || p.module || p.exports) return { kind: "library" };
@@ -99,7 +107,7 @@ export function detectStrategy(a: Analysis, dockerEnabled = false): BootStrategy
     return { kind: "library" };
   }
 
-  // 12. Unknown — degrade to library
+  // 13. Unknown — degrade to library
   return { kind: "unknown" };
 }
 

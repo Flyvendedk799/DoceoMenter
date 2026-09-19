@@ -36,15 +36,23 @@ const baseAnalysis: Analysis = {
     { path: "index.html", bytes: 180 },
     { path: "README.md", bytes: 80 },
   ],
-  signals: { hasFrontend: true, hasBackend: false, hasCLI: false, isLibrary: false, framework: "vite" },
+  signals: { hasFrontend: true, hasBackend: false, hasCLI: false, hasElectron: false, isLibrary: false, framework: "vite" },
+};
+
+const defaultGuidance = {
+  includeVideo: true,
+  outputStyle: "standard" as const,
+  liveMedia: "if-possible" as const,
+  captureSurface: "browser" as const,
+  capturePlanMode: "auto" as const,
 };
 
 describe("fixture claude client", () => {
   it("produces a schema-valid concept and capture plan", async () => {
     const client = createFixtureClient();
     const { concept, capturePlan } = await client.draftConceptAndPlan(baseAnalysis, {
+      ...defaultGuidance,
       includeVideo: true,
-      outputStyle: "standard",
     });
     expect(ConceptSchema.parse(concept)).toBeTruthy();
     expect(CapturePlanSchema.parse(capturePlan)).toBeTruthy();
@@ -67,7 +75,7 @@ describe("fixture claude client", () => {
         ...baseAnalysis,
         signals: { ...baseAnalysis.signals, hasFrontend: false, isLibrary: true },
       },
-      { includeVideo: false, outputStyle: "standard" },
+      { ...defaultGuidance, includeVideo: false, captureSurface: "none", liveMedia: "skip" },
     );
     expect(
       capturePlan.shots.every((s) => !(s.kind === "screenshot" && s.target === "live-app")),
@@ -77,8 +85,8 @@ describe("fixture claude client", () => {
   it("technical pass returns one caption per successful capture and a valid summary", async () => {
     const client = createFixtureClient();
     const { capturePlan } = await client.draftConceptAndPlan(baseAnalysis, {
+      ...defaultGuidance,
       includeVideo: false,
-      outputStyle: "standard",
     });
     const manifest: CaptureManifest = {
       entries: capturePlan.shots.map((shot, i) => ({
@@ -90,7 +98,7 @@ describe("fixture claude client", () => {
     };
     const { technical, caseBrief, captions, summary } = await client.draftTechnicalAndCaptions(
       baseAnalysis,
-      (await client.draftConceptAndPlan(baseAnalysis, { includeVideo: false, outputStyle: "standard" })).concept,
+      (await client.draftConceptAndPlan(baseAnalysis, { ...defaultGuidance, includeVideo: false })).concept,
       capturePlan,
       manifest,
     );

@@ -17,7 +17,7 @@ import {
 import { z } from "zod";
 import { buildRepoContext } from "./context.js";
 import { createFixtureClient } from "./fixture.js";
-import { SYSTEM_PROMPT, USER_CONCEPT_PROMPT, USER_TECHNICAL_PROMPT } from "./prompts.js";
+import { SYSTEM_PROMPT, USER_CONCEPT_PROMPT, USER_TECHNICAL_PROMPT, formatCaptureGuidance, type CaptureGuidance } from "./prompts.js";
 import { TOOL_DEFINITIONS } from "./tools.js";
 import {
   createTransport,
@@ -56,7 +56,7 @@ export type ClaudeClientOptions = {
 export type ClaudeClient = {
   draftConceptAndPlan: (
     a: Analysis,
-    opts: { includeVideo: boolean; outputStyle: "concise" | "standard" | "deep" },
+    opts: CaptureGuidance,
   ) => Promise<{ concept: Concept; capturePlan: CapturePlan }>;
   draftTechnicalAndCaptions: (
     a: Analysis,
@@ -232,7 +232,7 @@ function createGeneratingClient(transport: Transport, log: (line: string) => voi
     async draftConceptAndPlan(analysis, callOpts) {
       const system = systemBlocks(analysis);
       const tools: Tool[] = [TOOL_DEFINITIONS.conceptTool, TOOL_DEFINITIONS.capturePlanTool];
-      const userText = `${USER_CONCEPT_PROMPT}\n\nincludeVideo: ${callOpts.includeVideo}\noutputStyle: ${callOpts.outputStyle}`;
+      const userText = `${USER_CONCEPT_PROMPT}\n\n${formatCaptureGuidance(callOpts)}`;
       const uses = await gather(
         transport.start(system, tools, TOKEN_BUDGET.conceptOutput),
         userText,

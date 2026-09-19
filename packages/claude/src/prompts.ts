@@ -18,10 +18,20 @@ export const USER_CONCEPT_PROMPT = `Read the <repo-context>. Then call BOTH tool
    - audience: 1-3 short bullets for target users.
 
 2. submit_capture_plan with 4-10 shots that, together, would let a reader *see* this project. Constraints:
-   - If signals.hasFrontend is true, include >=1 shot with target="live-app" and importance=1.
+   - Respect the <capture-guidance> block appended below — it overrides defaults.
+   - target="live-app" means the product's live surface for this run:
+     - browser: a URL route Playwright can open (e.g. "/")
+     - cli: put the shell command in \`route\` (e.g. "node dist/cli.js --help") — do not invent "/"
+     - electron: window capture is not available yet; prefer live-app shots whose route is a CLI/dev command that exercises the app, plus architecture/readme
+     - none: do not include live-app shots
+   - If liveMedia is "skip", include zero live-app shots.
+   - If liveMedia is "required" or "if-possible" and surface is browser or cli, include >=1 live-app shot with importance=1.
    - If signals.hasBackend is true OR fileCount>50, include >=1 shot with target="code-architecture" and a Mermaid spec.
-   - At most 1 video; only include if includeVideo is true.
-   - Routes for live-app shots must be plausible from the source (e.g. "/" is always safe; deeper routes require evidence).`;
+   - At most 1 video; only include if includeVideo is true AND surface is browser.
+   - Routes/commands for live-app shots must be plausible from the source.
+   - planMode=guided: honor captureTargets (one shot per target when possible).
+   - planMode=brief: honor captureBrief as the primary intent for live shots.
+   - planMode=auto: choose the best surfaces yourself.`;
 
 export const USER_TECHNICAL_PROMPT = `You previously produced a concept and a capture plan. Below is a <capture-manifest> describing what was actually captured (some shots may have failed).
 
@@ -38,13 +48,40 @@ Call all four tools:
 
 3. submit_case_brief:
    - problem: the concrete user or repo-documentation problem the project appears to solve.
-   - productNarrative: how the product works from input to output, grounded in README/manifests/files/captures.
-   - audienceFit: 1-5 entries naming who it is for, what they need, and the evidence.
-   - evidence: 3-8 claims with source and confidence. Prefer "high" only when directly supported.
-   - mediaPlan: 2-8 surfaces that should appear in a high-quality case artifact. Use captureId for successful captures; omit captureId for evidence-backed but uncaptured surfaces.
-   - auditMetrics: 3-8 non-outcome metrics derived from static analysis or captured manifest only (file count, language count, entrypoints, successful captures, package scripts, etc.).
-   - risksAndGaps: 1-6 honest gaps that would stop the artifact from being reference-grade, with recommended fixes.
+   - productNarrative: what the product does, grounded in evidence.
+   - evidence: >=3 { claim, evidence } pairs citing paths or captures.
+   - mediaPlan: link each successful capture to a storytelling role.
+   - auditMetrics: >=3 non-outcome metrics (file counts, scripts, capture counts).
+   - risksAndGaps: honest gaps (uncaptured surfaces, missing tests, etc.).
 
-4. submit_summary:
-   - oneLiner: <=14 words, no period at the end.
-   - tldr: exactly 3 bullets, each <=20 words.`;
+4. submit_summary: 3-5 bullets a busy reader can skim.`;
+
+export type CaptureGuidance = {
+  includeVideo: boolean;
+  outputStyle: "concise" | "standard" | "deep";
+  liveMedia: "required" | "if-possible" | "skip";
+  captureSurface: "browser" | "electron" | "cli" | "none";
+  capturePlanMode: "auto" | "guided" | "brief";
+  captureTargets?: string[];
+  captureBrief?: string;
+};
+
+export function formatCaptureGuidance(g: CaptureGuidance): string {
+  const lines = [
+    "<capture-guidance>",
+    `includeVideo: ${g.includeVideo}`,
+    `outputStyle: ${g.outputStyle}`,
+    `liveMedia: ${g.liveMedia}`,
+    `captureSurface: ${g.captureSurface}`,
+    `planMode: ${g.capturePlanMode}`,
+  ];
+  if (g.captureTargets && g.captureTargets.length > 0) {
+    lines.push(`captureTargets:`);
+    for (const t of g.captureTargets) lines.push(`  - ${t}`);
+  }
+  if (g.captureBrief) {
+    lines.push(`captureBrief: ${g.captureBrief}`);
+  }
+  lines.push("</capture-guidance>");
+  return lines.join("\n");
+}

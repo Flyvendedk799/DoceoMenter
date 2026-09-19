@@ -9,6 +9,7 @@ import type {
   Technical,
 } from "@doceomenter/shared";
 import type { ClaudeClient } from "./client.js";
+import type { CaptureGuidance } from "./prompts.js";
 
 /**
  * Deterministic fixture client used when ANTHROPIC_API_KEY is absent.
@@ -19,7 +20,7 @@ export function createFixtureClient(): ClaudeClient {
   return {
     async draftConceptAndPlan(a, callOpts) {
       const concept = buildConcept(a);
-      const capturePlan = buildPlan(a, callOpts.includeVideo);
+      const capturePlan = buildPlan(a, callOpts);
       return { concept, capturePlan };
     },
 
@@ -103,29 +104,45 @@ function buildConcept(a: Analysis): Concept {
   return { what, why, vision, audience: audience.slice(0, 5) };
 }
 
-function buildPlan(a: Analysis, includeVideo: boolean): CapturePlan {
+function buildPlan(a: Analysis, opts: CaptureGuidance): CapturePlan {
   const shots: CapturePlan["shots"] = [];
+  const surface = opts.captureSurface;
+  const wantLive = opts.liveMedia !== "skip" && surface !== "none";
 
-  if (a.signals.hasFrontend) {
-    shots.push({
-      id: "live-home",
-      kind: "screenshot",
-      target: "live-app",
-      route: "/",
-      viewport: { w: 1440, h: 900 },
-      caption: "The application's home view.",
-      importance: 1,
-    });
-    shots.push({
-      id: "live-home-full",
-      kind: "screenshot",
-      target: "live-app",
-      route: "/",
-      viewport: { w: 1440, h: 900 },
-      fullPage: true,
-      caption: "Full-page scroll of the home view.",
-      importance: 2,
-    });
+  if (wantLive && (surface === "browser" || a.signals.hasFrontend) && surface !== "cli") {
+    const routes =
+      opts.capturePlanMode === "guided" && opts.captureTargets?.length
+        ? opts.captureTargets.filter((t) => t.startsWith("/") || t === "/")
+        : ["/"];
+    for (const [i, route] of routes.slice(0, 3).entries()) {
+      shots.push({
+        id: i === 0 ? "live-home" : `live-${i}`,
+        kind: "screenshot",
+        target: "live-app",
+        route: route.startsWith("/") ? route : `/${route}`,
+        viewport: { w: 1440, h: 900 },
+        caption: opts.captureBrief || `The application's ${route} view.`,
+        importance: i === 0 ? 1 : 2,
+      });
+    }
+  }
+
+  if (wantLive && (surface === "cli" || (surface === "electron" && !a.signals.hasFrontend))) {
+    const cmds =
+      opts.capturePlanMode === "guided" && opts.captureTargets?.length
+        ? opts.captureTargets
+        : ["--help"];
+    for (const [i, cmd] of cmds.slice(0, 3).entries()) {
+      shots.push({
+        id: i === 0 ? "cli-live" : `cli-live-${i}`,
+        kind: "screenshot",
+        target: "live-app",
+        route: cmd,
+        viewport: { w: 1280, h: 800 },
+        caption: opts.captureBrief || `CLI: ${cmd}`,
+        importance: 1,
+      });
+    }
   }
 
   shots.push({
@@ -136,7 +153,7 @@ function buildPlan(a: Analysis, includeVideo: boolean): CapturePlan {
     importance: 2,
   });
 
-  if (a.signals.hasBackend || a.fileCount > 50) {
+  if (a.signals.hasBackend || a.fileCount > 50 || a.signals.hasElectron) {
     shots.push({
       id: "arch-diagram",
       kind: "screenshot",
@@ -147,7 +164,7 @@ function buildPlan(a: Analysis, includeVideo: boolean): CapturePlan {
     });
   }
 
-  if (includeVideo && a.signals.hasFrontend) {
+  if (opts.includeVideo && wantLive && surface === "browser" && a.signals.hasFrontend) {
     shots.push({
       id: "live-walkthrough",
       kind: "video",
@@ -160,6 +177,16 @@ function buildPlan(a: Analysis, includeVideo: boolean): CapturePlan {
       ],
       maxDurationMs: 8000,
       caption: "A short scroll through the running application.",
+    });
+  }
+
+  if (shots.length === 0) {
+    shots.push({
+      id: "github-readme",
+      kind: "screenshot",
+      target: "github-readme",
+      caption: "The repository's README on GitHub.",
+      importance: 1,
     });
   }
 

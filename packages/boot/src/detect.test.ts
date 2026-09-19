@@ -11,7 +11,7 @@ function mk(part: Partial<Analysis>): Analysis {
     manifests: {},
     entrypoints: [],
     fileIndex: [],
-    signals: { hasFrontend: false, hasBackend: false, hasCLI: false, isLibrary: false },
+    signals: { hasFrontend: false, hasBackend: false, hasCLI: false, hasElectron: false, isLibrary: false },
     ...part,
   };
 }
@@ -122,9 +122,31 @@ describe("detectStrategy", () => {
           ...({ main: "dist/index.js" } as object),
         },
       },
-      signals: { hasFrontend: false, hasBackend: false, hasCLI: false, isLibrary: true },
+      signals: { hasFrontend: false, hasBackend: false, hasCLI: false, hasElectron: false, isLibrary: true },
     });
     expect(detectStrategy(a).kind).toBe("library");
+  });
+
+  it("detects electron before library", () => {
+    const a = mk({
+      manifests: {
+        nodePkg: {
+          name: "desk",
+          scripts: { start: "electron ." },
+          deps: ["electron"],
+          devDeps: [],
+        },
+      },
+      signals: {
+        hasFrontend: false,
+        hasBackend: false,
+        hasCLI: false,
+        hasElectron: true,
+        isLibrary: false,
+        framework: "electron",
+      },
+    });
+    expect(detectStrategy(a).kind).toBe("electron");
   });
 
   it("returns unknown when no signals match", () => {
