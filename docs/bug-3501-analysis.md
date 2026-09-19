@@ -56,11 +56,15 @@ To fix this permanently, DoceoMenter must behave identically to the `agy` CLI by
 
 ## Fix applied (verified against current code)
 
-Verified: transport already forwarded `projectId` into `antigravityCliOptions` (which sets `x-goog-user-project` when present), and `GeminiAccountStore` already persisted `meta.projectId`. The gap was that the Web UI rarely collected a project id, so credentials stayed at `projectId: null`.
+Verified: transport already forwarded `projectId` into `antigravityCliOptions` (which sets `x-goog-user-project` when present), and `GeminiAccountStore` already persisted `meta.projectId`.
+
+**Correction after user feedback:** personal / Google One `agy` logins do **not** need a GCP project id (Google’s own guidance: only org-managed Code Assist licenses set `GOOGLE_CLOUD_PROJECT`). Requiring a project id in the Web Connect flow was wrong for that path — Connect is code-only again; Project ID remains an optional field for org licenses.
+
+Likely #3501 drivers for personal Dogfood accounts remain endpoint/routing (`isDogfood` → `daily-cloudcode-pa`) and OAuth client/scopes — not a missing project id.
 
 Changes:
 
-1. **Web UI auth** (`ProviderPanel` + `/api/gemini/login/complete`): collect GCP project id during Connect (required to submit), store it with the credential via `completeGeminiOAuthLogin` → `geminiAccounts.save(..., projectId)`. Existing connected accounts without one still get a required-looking Project ID field.
-2. **OAuth scopes** (`geminiOAuth.ts`): request `aicode` on **Prod only**. The Dogfood OAuth client returns `403 restricted_client` ("Unregistered scope(s): .../auth/aicode") if that scope is included — do not add it for Dogfood.
-3. **Transport** (`transport.ts`): type `isDogfood` on the Gemini subscription wire credential; rely on `antigravityCliOptions` for host + `x-goog-user-project`; remove temporary `fetchAvailableModels` debug traffic; log when a subscription call runs without a project id.
-4. **Tests**: header present when `projectId` is set; header omitted (and warning logged) when null; Dogfood OAuth omits `aicode`; resolved credentials carry stored `projectId`.
+1. **Web UI auth**: Connect matches `agy` (paste code only). Optional GCP project id field after connect, for org-managed licenses only.
+2. **OAuth scopes** (`geminiOAuth.ts`): request `aicode` on **Prod only**. The Dogfood OAuth client returns `403 restricted_client` if that scope is included.
+3. **Transport** (`transport.ts`): type `isDogfood` on the Gemini subscription wire credential; set `x-goog-user-project` only when a project id is stored; remove temporary `fetchAvailableModels` debug traffic.
+4. **Tests**: header present when `projectId` is set; header omitted when null; Dogfood OAuth omits `aicode`.

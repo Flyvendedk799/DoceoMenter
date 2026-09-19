@@ -383,7 +383,6 @@ describe("gemini wire", () => {
         },
       },
     ]);
-    const warnings: string[] = [];
     const transport = createTransport({
       provider: "gemini-cli",
       credential: {
@@ -395,7 +394,7 @@ describe("gemini wire", () => {
       },
       modelPrimary: "gemini-3.1-pro",
       modelFallback: "gemini-3-flash",
-      logger: (line) => warnings.push(line),
+      logger: () => {},
       fetchImpl: impl,
     });
 
@@ -405,6 +404,5 @@ describe("gemini wire", () => {
     expect(calls[0]!.headers.authorization).toBe("Bearer gcli-token");
     expect(calls[0]!.headers["x-goog-user-project"]).toBeUndefined();
     expect(calls[0]!.body.project).toBeUndefined();
-    expect(warnings.some((line) => /no GCP project id/i.test(line))).toBe(true);
   });
 });

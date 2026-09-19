@@ -476,17 +476,13 @@ function geminiTransport(options: TransportOptions): Transport {
 
           const json = await withFallback(options, (m) => (model = m), async (m) => {
             const projectId = geminiSub?.projectId ?? null;
-            if (geminiSub && !projectId) {
-              options.logger(
-                "[gemini-cli] no GCP project id on this credential — flagship models (e.g. gemini-3.1-pro) need x-goog-user-project; set it in the provider panel",
-              );
-            }
 
             const response = geminiSub
               ? await doFetch(`${cli.baseURL}:generateContent`, {
                   method: "POST",
                   // `antigravityCliOptions` already set `Authorization`, `Content-Type` and, when a
                   // project is on the identity, `x-goog-user-project` — nothing to add here.
+                  // Personal / Google One logins typically have no project id (same as `agy`).
                   headers: cli.defaultHeaders ?? {},
                   body: JSON.stringify({
                     model: `models/${m}`,
