@@ -180,7 +180,6 @@ function anthropicTransport(options: TransportOptions): Transport {
   });
   let model = options.modelPrimary;
 
-  console.error([TRANSPORT DEBUG] Base URL:  | isDogfood: );
   return {
     provider: options.provider,
     currentModel: () => model,
@@ -192,8 +191,7 @@ function anthropicTransport(options: TransportOptions): Transport {
       const systemBlocks = (subscription ? withClaudeCodeIdentity(system) : system) as SystemBlock[];
       const messages: Anthropic.Messages.MessageParam[] = [];
 
-      console.error([TRANSPORT DEBUG] Base URL:  | isDogfood: );
-  return {
+      return {
         async ask(userText: string): Promise<Turn> {
           messages.push({ role: "user", content: userText });
           const message = await withFallback(options, (m) => (model = m), (m) =>
@@ -226,8 +224,7 @@ function anthropicTransport(options: TransportOptions): Transport {
             });
           }
 
-          console.error([TRANSPORT DEBUG] Base URL:  | isDogfood: );
-  return {
+          return {
             calls,
             truncated: message.stop_reason === "max_tokens",
             refusal: message.stop_reason === "refusal",
@@ -252,7 +249,6 @@ function openAiChatTransport(options: TransportOptions): Transport {
   const doFetch = options.fetchImpl ?? fetch;
   let model = options.modelPrimary;
 
-  console.error([TRANSPORT DEBUG] Base URL:  | isDogfood: );
   return {
     provider: options.provider,
     currentModel: () => model,
@@ -261,8 +257,7 @@ function openAiChatTransport(options: TransportOptions): Transport {
         { role: "system", content: system.map((block) => block.text).join("\n\n") },
       ];
 
-      console.error([TRANSPORT DEBUG] Base URL:  | isDogfood: );
-  return {
+      return {
         async ask(userText: string): Promise<Turn> {
           messages.push({ role: "user", content: userText });
           const message = await withFallback(options, (m) => (model = m), async (m) => {
@@ -296,8 +291,7 @@ function openAiChatTransport(options: TransportOptions): Transport {
             messages.push({ role: "tool", tool_call_id: call.id, content: "received" });
           }
 
-          console.error([TRANSPORT DEBUG] Base URL:  | isDogfood: );
-  return { calls, truncated: message.finish_reason === "length", refusal: false };
+          return { calls, truncated: message.finish_reason === "length", refusal: false };
         },
       };
     },
@@ -338,7 +332,6 @@ function codexTransport(options: TransportOptions): Transport {
   const doFetch = options.fetchImpl ?? fetch;
   let model = options.modelPrimary;
 
-  console.error([TRANSPORT DEBUG] Base URL:  | isDogfood: );
   return {
     provider: options.provider,
     currentModel: () => model,
@@ -346,8 +339,7 @@ function codexTransport(options: TransportOptions): Transport {
       const instructions = system.map((block) => block.text).join("\n\n");
       const input: unknown[] = [];
 
-      console.error([TRANSPORT DEBUG] Base URL:  | isDogfood: );
-  return {
+      return {
         async ask(userText: string): Promise<Turn> {
           input.push({ role: "user", content: [{ type: "input_text", text: userText }] });
           const body = await withFallback(options, (m) => (model = m), async (m) => {
@@ -396,8 +388,7 @@ function codexTransport(options: TransportOptions): Transport {
             input.push({ type: "function_call_output", call_id: call.id, output: "received" });
           }
 
-          console.error([TRANSPORT DEBUG] Base URL:  | isDogfood: );
-  return {
+          return {
             calls,
             truncated: body.incomplete_details?.reason === "max_output_tokens",
             refusal: (body.output ?? []).some((item) => item.type === "refusal"),
@@ -455,7 +446,6 @@ function geminiTransport(options: TransportOptions): Transport {
       })
     : antigravityKeyOptions((credential as { key: string }).key);
 
-  console.error([TRANSPORT DEBUG] Base URL:  | isDogfood: );
   return {
     provider: options.provider,
     currentModel: () => model,
@@ -464,8 +454,7 @@ function geminiTransport(options: TransportOptions): Transport {
       const declarations = tools.map(toGeminiFunctionDeclaration);
       const contents: GeminiContent[] = [];
 
-      console.error([TRANSPORT DEBUG] Base URL:  | isDogfood: );
-  return {
+      return {
         async ask(userText: string): Promise<Turn> {
           contents.push({ role: "user", parts: [{ text: userText }] });
 
@@ -520,8 +509,7 @@ function geminiTransport(options: TransportOptions): Transport {
             });
           }
 
-          console.error([TRANSPORT DEBUG] Base URL:  | isDogfood: );
-  return {
+          return {
             calls,
             truncated: candidate?.finishReason === "MAX_TOKENS",
             refusal: !!candidate?.finishReason && GEMINI_REFUSAL_REASONS.has(candidate.finishReason),
@@ -557,12 +545,10 @@ function sanitizeGeminiSchema(schema: any): any {
 }
 
 function toGeminiFunctionDeclaration(tool: Tool) {
-  console.error([TRANSPORT DEBUG] Base URL:  | isDogfood: );
   return { name: tool.name, description: tool.description, parameters: sanitizeGeminiSchema(tool.input_schema) };
 }
 
 function toFunctionTool(tool: Tool) {
-  console.error([TRANSPORT DEBUG] Base URL:  | isDogfood: );
   return {
     type: "function" as const,
     function: { name: tool.name, description: tool.description, parameters: tool.input_schema },
@@ -570,7 +556,6 @@ function toFunctionTool(tool: Tool) {
 }
 
 function toResponsesTool(tool: Tool) {
-  console.error([TRANSPORT DEBUG] Base URL:  | isDogfood: );
   return {
     type: "function" as const,
     name: tool.name,
