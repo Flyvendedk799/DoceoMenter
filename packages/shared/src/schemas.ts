@@ -272,6 +272,11 @@ export function normalizeShotInput(raw: unknown): unknown {
       .slice(0, 64) || "shot";
   }
 
+  // Gemini often uses media/isVideo instead of kind (ServerHoster run 4365360911b5).
+  if (s.kind === undefined || s.kind === null) {
+    if (s.isVideo === true || s.is_video === true) s.kind = "video";
+    else if (typeof s.media === "string") s.kind = s.media;
+  }
   if (typeof s.kind === "string") {
     const key = s.kind.trim().toLowerCase().replace(/\s+/g, "");
     s.kind = KIND_ALIASES[key] ?? s.kind.trim().toLowerCase();
@@ -283,6 +288,23 @@ export function normalizeShotInput(raw: unknown): unknown {
       TARGET_ALIASES[key] ??
       TARGET_ALIASES[compact] ??
       s.target.trim().toLowerCase();
+  }
+  if (typeof s.mermaid === "string" && s.diagramSpec === undefined) {
+    s.diagramSpec = s.mermaid;
+  }
+  if (
+    (s.target === undefined || s.target === null) &&
+    (typeof s.diagramSpec === "string" ||
+      (s.diagramSpec && typeof s.diagramSpec === "object") ||
+      typeof s.mermaid === "string")
+  ) {
+    s.target = "code-architecture";
+  }
+  if (s.kind === undefined || s.kind === null) {
+    s.kind = "screenshot";
+  }
+  if (s.target === "code-architecture") {
+    s.kind = "screenshot";
   }
 
   const importance = asFiniteNumber(s.importance);
@@ -310,7 +332,9 @@ export function normalizeShotInput(raw: unknown): unknown {
   }
 
   if (typeof s.caption !== "string" || s.caption.trim() === "") {
-    s.caption = typeof s.id === "string" ? s.id : "Capture";
+    const fromTitle = typeof s.title === "string" ? s.title.trim() : "";
+    const fromDesc = typeof s.description === "string" ? s.description.trim() : "";
+    s.caption = fromDesc || fromTitle || (typeof s.id === "string" ? s.id : "Capture");
   }
 
   if (typeof s.fullPage === "string") {

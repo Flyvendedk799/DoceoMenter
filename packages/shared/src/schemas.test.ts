@@ -157,6 +157,60 @@ describe("ShotSchema viewport bounds", () => {
       expect(tour.script[0]).toEqual({ do: "fill", selector: "input", text: "hi" });
     }
   });
+
+  it("accepts Gemini media/title/description shaped shots from havekongen", () => {
+    const plan = CapturePlanSchema.safeParse({
+      shots: [
+        {
+          title: "Havekongen Landing & Storefront",
+          description: "Main homepage presenting garden management tools.",
+          id: "landing-page",
+          target: "live-app",
+          media: "image",
+          importance: 1,
+          route: "/",
+        },
+        {
+          description: "3D digital twin of the garden.",
+          route: "/havemaaler/3d",
+          target: "live-app",
+          title: "3D Garden Twin Scene",
+          importance: 2,
+          media: "video",
+          id: "garden-3d",
+        },
+        {
+          id: "garden-3d-twin",
+          isVideo: true,
+          title: "3D Digital Twin Viewer",
+          target: "live-app",
+          route: "/havemaaler/3d",
+          importance: 2,
+        },
+        {
+          id: "architecture",
+          mermaid:
+            "graph TD\n  Client[React] -->|JWT| API[PostgREST]\n  API --> DB[(Postgres)]",
+          importance: 2,
+        },
+      ],
+    });
+    expect(plan.success).toBe(true);
+    if (!plan.success) return;
+    expect(plan.data.shots.map((s) => s.kind)).toEqual([
+      "screenshot",
+      "video",
+      "video",
+      "screenshot",
+    ]);
+    expect(plan.data.shots[0]).toMatchObject({
+      target: "live-app",
+      caption: "Main homepage presenting garden management tools.",
+    });
+    expect(plan.data.shots[3]).toMatchObject({
+      target: "code-architecture",
+    });
+  });
 });
 
 describe("isValidRunId", () => {
