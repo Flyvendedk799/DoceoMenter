@@ -181,14 +181,17 @@ describe("gemini subscription resolution", () => {
     const runtime = await runtimeIn();
     await runtime.geminiAccounts.save("account-1", identity, "my-gcp-project");
 
+    // Discovery still runs (standard-tier onboard needs the project on the wire); when hosts
+    // fail, the stored personal GCP project is used.
+    const fetchImpl = (async () => {
+      throw new Error("hosts down");
+    }) as unknown as typeof fetch;
+
     const credential = await resolveProviderCredential({
       provider: "gemini-cli",
       accountId: "account-1",
       runtime,
-      // Would fail if contacted — stored project must short-circuit.
-      fetchImpl: (async () => {
-        throw new Error("network should not be called");
-      }) as unknown as typeof fetch,
+      fetchImpl,
     });
     expect(credential).toMatchObject({
       kind: "subscription",
@@ -197,6 +200,39 @@ describe("gemini subscription resolution", () => {
     });
   });
 
+  it("surfaces standard-tier missing GCP project as a recoverable CredentialError", async () => {
+    const runtime = await runtimeIn();
+    await runtime.geminiAccounts.save("account-1", { ...identity, isDogfood: true });
+
+    const fetchImpl = (async () => {
+      return new Response(
+        JSON.stringify({
+          allowedTiers: [
+            {
+              id: "standard-tier",
+              isDefault: true,
+              userDefinedCloudaicompanionProject: true,
+            },
+          ],
+          ineligibleTiers: [{ tierId: "free-tier", reasonCode: "INELIGIBLE" }],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+
+    await expect(
+      resolveProviderCredential({
+        provider: "gemini-cli",
+        accountId: "account-1",
+        runtime,
+        fetchImpl,
+      }),
+    ).rejects.toMatchObject({
+      name: "CredentialError",
+      provider: "gemini-cli",
+      message: expect.stringMatching(/PERSONAL GCP PROJECT|standard-tier/i),
+    });
+  });
   it("persists a managed project discovered via loadCodeAssist on Prod", async () => {
     const runtime = await runtimeIn();
     await runtime.geminiAccounts.save("account-1", { ...identity, isDogfood: false });

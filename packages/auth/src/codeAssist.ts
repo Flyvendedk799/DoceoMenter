@@ -1,18 +1,15 @@
 /**
- * Resolve the managed Cloud Code project the way Antigravity (`agy`) does.
+ * Resolve the managed Cloud Code project the way Antigravity (`agy`) / Gemini CLI do.
  *
- * Personal Google AI / Google One accounts never type a GCP project id. `agy` POSTs
- * `loadCodeAssist` with `{ metadata: { ideType: "ANTIGRAVITY" } }` and, if needed,
- * `onboardUser` with snake_case metadata, then uses `cloudaicompanionProject`.
- *
- * Gemini CLI's Code Assist metadata (`pluginType: GEMINI`, `platform: PLATFORM_UNSPECIFIED`)
- * is a different product. Google answers "Client does not support Google TOS" for that shape,
- * which is not a missing license on the account.
+ * Personal Google AI Pro/Ultra accounts are often **ineligible for free-tier** Code Assist and
+ * only offered `standard-tier`, which requires the user to supply their own GCP project id
+ * (same rule as `GOOGLE_CLOUD_PROJECT` in gemini-cli). Without that project, `onboardUser`
+ * completes with no `cloudaicompanionProject` and `generateContent` answers #3501
+ * SUBSCRIPTION_REQUIRED — even though Google AI Pro is active on the account.
  *
  * Never puts Google's enterprise shared project `aicode-consumers` on `x-goog-user-project`
  * (personal tokens have no IAM there → 403). When load/onboard only name that project, we
- * still try to provision a personal one; if Google refuses, we return it as a **body-only**
- * companion id so generateContent can include `project` without the IAM header.
+ * return it as a body-only companion id.
  */
 
 import {
@@ -26,37 +23,24 @@ import {
 } from "@doceomenter/shared";
 
 const FREE_TIER = "free-tier";
+const STANDARD_TIER = "standard-tier";
 const ONBOARD_POLL_MS = 2_000;
 const ONBOARD_MAX_POLLS = 30;
 
 export type EnsureCodeAssistProjectInput = {
   accessToken: string;
   isDogfood?: boolean;
-  /** Already known (user-typed or previously discovered). Skip the network when set. */
+  /** User-typed or previously discovered personal GCP / managed project id. */
   projectId?: string | null;
   fetchImpl?: typeof fetch;
-  /** Test seam. */
   sleep?: (ms: number) => Promise<void>;
-  /**
-   * Optional sink for discovery steps (e.g. the run Worker log in the UI).
-   * Always also printed on stderr for ServerHoster.
-   */
+  /** Optional sink for discovery steps (run Worker log / UI). Also printed on stderr. */
   log?: (line: string) => void;
 };
 
-/** Result of discovery / onboarding — includes which Cloud Code surface yielded the project. */
 export type CodeAssistDiscovery = {
-  /**
-   * Personal managed project — safe for `x-goog-user-project` and body `project`.
-   * Null when Google only offered the enterprise shared companion project.
-   */
   projectId: string | null;
-  /**
-   * When set, send as generateContent body `project` only — never as `x-goog-user-project`
-   * (that header triggers serviceUsageConsumer 403 for personal Google AI tokens).
-   */
   bodyOnlyProjectId?: string | null;
-  /** True when traffic should use the daily (G1 / consumer) host. */
   isDogfood: boolean;
 };
 
@@ -67,11 +51,18 @@ export class CodeAssistSetupError extends Error {
   }
 }
 
+type CodeAssistTier = {
+  id?: string;
+  name?: string;
+  isDefault?: boolean;
+  userDefinedCloudaicompanionProject?: boolean;
+};
+
 type LoadCodeAssistResponse = {
-  currentTier?: { id?: string; name?: string } | null;
-  allowedTiers?: Array<{ id?: string; name?: string; isDefault?: boolean }> | null;
+  currentTier?: CodeAssistTier | null;
+  allowedTiers?: CodeAssistTier[] | null;
   cloudaicompanionProject?: string | { id?: string } | null;
-  paidTier?: { id?: string } | null;
+  paidTier?: CodeAssistTier | null;
   ineligibleTiers?: Array<{ reasonMessage?: string; reasonCode?: string; tierId?: string }> | null;
 };
 
@@ -81,10 +72,14 @@ type OnboardUserResponse = {
   response?: { cloudaicompanionProject?: { id?: string; name?: string } | string };
 };
 
-type HostDiscovery = { projectId: string | null; sawEnterpriseShared: boolean };
+type HostDiscovery = {
+  projectId: string | null;
+  sawEnterpriseShared: boolean;
+  /** True when Google only offered a tier that needs the user to supply a GCP project. */
+  needsUserProject: boolean;
+};
 
 function assistLog(log: ((line: string) => void) | undefined, line: string): void {
-  // stderr: ServerHoster captures console.error. Optional `log` reaches the run UI Worker log.
   console.error(line);
   try {
     log?.(line);
@@ -93,22 +88,21 @@ function assistLog(log: ((line: string) => void) | undefined, line: string): voi
   }
 }
 
-/**
- * Returns a personal project id suitable for `x-goog-user-project` / `generateContent.project`,
- * or a body-only shared companion fallback when Google will not provision anything else.
- */
+/** Clear copy for the run UI / CredentialError when standard-tier needs a GCP project. */
+export function gcpProjectRequiredMessage(): string {
+  return (
+    "Google AI Pro/Ultra for Antigravity is on Code Assist standard-tier, which needs your own " +
+    "GCP project id (free-tier Code Assist is not available for this account). In the provider " +
+    "panel under Antigravity, set PERSONAL GCP PROJECT to a project you own, enable the Gemini " +
+    "for Google Cloud API on it, Save, then retry. Create a project at " +
+    "https://console.cloud.google.com/ if you do not have one yet."
+  );
+}
+
 export async function ensureCodeAssistProject(
   input: EnsureCodeAssistProjectInput,
 ): Promise<CodeAssistDiscovery | null> {
-  const existing = sanitizePersonalCloudCodeProject(input.projectId);
-  if (existing) {
-    assistLog(
-      input.log,
-      `[code-assist] using stored personal project=${existing} dogfood=${input.isDogfood ? "yes" : "no"}`,
-    );
-    return { projectId: existing, isDogfood: Boolean(input.isDogfood) };
-  }
-
+  const userProject = sanitizePersonalCloudCodeProject(input.projectId);
   const doFetch = input.fetchImpl ?? fetch;
   const sleep = input.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
   const headers: Record<string, string> = {
@@ -118,14 +112,24 @@ export async function ensureCodeAssistProject(
   const hosts = cloudCodeDiscoveryHosts(input.isDogfood);
   assistLog(
     input.log,
-    `[code-assist] discovering managed project dogfood=${input.isDogfood ? "yes" : "no"} hosts=${hosts.join(" → ")}`,
+    `[code-assist] discovering managed project dogfood=${input.isDogfood ? "yes" : "no"} ` +
+      `userProject=${userProject ?? "(none)"} hosts=${hosts.join(" → ")}`,
   );
 
   let sawEnterpriseShared = false;
+  let needsUserProject = false;
 
   for (const baseURL of hosts) {
-    const result = await discoverOnHost({ baseURL, headers, doFetch, sleep, log: input.log });
+    const result = await discoverOnHost({
+      baseURL,
+      headers,
+      doFetch,
+      sleep,
+      log: input.log,
+      userProject,
+    });
     if (result.sawEnterpriseShared) sawEnterpriseShared = true;
+    if (result.needsUserProject) needsUserProject = true;
     if (result.projectId) {
       assistLog(
         input.log,
@@ -135,21 +139,44 @@ export async function ensureCodeAssistProject(
     }
   }
 
-  // Last resort matching working Antigravity clients: onboard free-tier on daily even when
-  // every loadCodeAssist only named the enterprise shared project.
-  const dailyFallback = await onboardFreeTierOnDaily({ headers, doFetch, sleep, log: input.log });
-  if (dailyFallback.sawEnterpriseShared) sawEnterpriseShared = true;
-  if (dailyFallback.projectId) {
+  // Free-tier last resort only when Google did not already say this account needs a user GCP project.
+  if (!needsUserProject) {
+    const dailyFallback = await onboardUserOnHost({
+      baseURL: CLOUD_CODE_DAILY_BASE_URL,
+      headers,
+      doFetch,
+      sleep,
+      tierId: FREE_TIER,
+      log: input.log,
+      userProject: null,
+      needsUserProject: false,
+    });
+    if (dailyFallback.sawEnterpriseShared) sawEnterpriseShared = true;
+    if (dailyFallback.projectId) {
+      assistLog(
+        input.log,
+        `[code-assist] personal project=${dailyFallback.projectId} from daily free-tier onboard`,
+      );
+      return { projectId: dailyFallback.projectId, isDogfood: true };
+    }
+  }
+
+  if (needsUserProject && !userProject) {
+    assistLog(input.log, `[code-assist] ${gcpProjectRequiredMessage()}`);
+    throw new CodeAssistSetupError(gcpProjectRequiredMessage());
+  }
+
+  // User typed a GCP project but hosts did not return a managed id — bill against theirs
+  // (gemini-cli does the same when onboard omits cloudaicompanionProject).
+  if (userProject) {
     assistLog(
       input.log,
-      `[code-assist] personal project=${dailyFallback.projectId} from daily free-tier onboard`,
+      `[code-assist] using user GCP project=${userProject} after discovery (standard-tier path)`,
     );
-    return { projectId: dailyFallback.projectId, isDogfood: true };
+    return { projectId: userProject, isDogfood: Boolean(input.isDogfood) || needsUserProject };
   }
 
   if (sawEnterpriseShared) {
-    // Google bound this account to aicode-consumers and will not mint another id.
-    // Send that id in the JSON body only; never as x-goog-user-project (IAM 403).
     assistLog(
       input.log,
       `[code-assist] Google only named ${GOOGLE_ENTERPRISE_CLOUD_CODE_PROJECT}; using it as generateContent body project without x-goog-user-project (daily host)`,
@@ -157,7 +184,6 @@ export async function ensureCodeAssistProject(
     return {
       projectId: null,
       bodyOnlyProjectId: GOOGLE_ENTERPRISE_CLOUD_CODE_PROJECT,
-      // Prefer daily for personal Google AI when prod only offered the shared companion.
       isDogfood: true,
     };
   }
@@ -170,34 +196,53 @@ function isDailyHost(baseURL: string): boolean {
   return baseURL === CLOUD_CODE_DAILY_BASE_URL || baseURL.includes("daily-cloudcode-pa");
 }
 
+function tierNeedsUserProject(tier: CodeAssistTier | null | undefined): boolean {
+  if (!tier?.id) return false;
+  if (tier.userDefinedCloudaicompanionProject === true) return true;
+  const id = tier.id.toLowerCase();
+  return id === STANDARD_TIER || id === "legacy-tier" || (id !== FREE_TIER && id !== "free");
+}
+
+function selectOnboardTier(load: LoadCodeAssistResponse): CodeAssistTier {
+  const allowed = load.allowedTiers ?? [];
+  const fromDefault = allowed.find((t) => t.isDefault);
+  if (fromDefault) return fromDefault;
+  if (allowed[0]) return allowed[0];
+  if (load.currentTier?.id) return load.currentTier;
+  if (load.paidTier?.id) return load.paidTier;
+  return { id: FREE_TIER };
+}
+
 async function discoverOnHost(input: {
   baseURL: string;
   headers: Record<string, string>;
   doFetch: typeof fetch;
   sleep: (ms: number) => Promise<void>;
   log?: (line: string) => void;
+  userProject: string | null;
 }): Promise<HostDiscovery> {
-  const { baseURL, headers, doFetch, sleep, log } = input;
+  const { baseURL, headers, doFetch, sleep, log, userProject } = input;
 
   let load: LoadCodeAssistResponse;
   try {
-    load = await postJson<LoadCodeAssistResponse>(doFetch, `${baseURL}:loadCodeAssist`, headers, {
-      metadata: ANTIGRAVITY_LOAD_METADATA,
-    });
+    const body: Record<string, unknown> = { metadata: ANTIGRAVITY_LOAD_METADATA };
+    if (userProject) body.cloudaicompanionProject = userProject;
+    load = await postJson<LoadCodeAssistResponse>(doFetch, `${baseURL}:loadCodeAssist`, headers, body);
   } catch (error) {
     assistLog(log, `[code-assist] loadCodeAssist ${baseURL}: ${(error as Error).message}`);
-    return { projectId: null, sawEnterpriseShared: false };
+    return { projectId: null, sawEnterpriseShared: false, needsUserProject: false };
   }
 
   const fromLoad = sanitizePersonalCloudCodeProject(readProjectId(load.cloudaicompanionProject));
-  if (fromLoad) return { projectId: fromLoad, sawEnterpriseShared: false };
+  if (fromLoad) return { projectId: fromLoad, sawEnterpriseShared: false, needsUserProject: false };
+
   const rawLoad = readProjectId(load.cloudaicompanionProject);
   let sawEnterpriseShared = false;
   if (rawLoad) {
     sawEnterpriseShared = rawLoad === GOOGLE_ENTERPRISE_CLOUD_CODE_PROJECT;
     assistLog(
       log,
-      `[code-assist] loadCodeAssist ${baseURL} returned enterprise project ${rawLoad}; will try onboardUser for a personal project`,
+      `[code-assist] loadCodeAssist ${baseURL} returned enterprise project ${rawLoad}; will try onboardUser`,
     );
   } else {
     assistLog(
@@ -206,10 +251,18 @@ async function discoverOnHost(input: {
     );
   }
 
+  // Already onboarded to a tier but no companion project in the payload — use the user's GCP
+  // project when present (gemini-cli setupUser does the same).
+  if (load.currentTier?.id && userProject && !rawLoad) {
+    assistLog(
+      log,
+      `[code-assist] loadCodeAssist ${baseURL} has currentTier=${load.currentTier.id} without companion project; using user GCP project=${userProject}`,
+    );
+    return { projectId: userProject, sawEnterpriseShared: false, needsUserProject: false };
+  }
+
   const canOnboard = Boolean(
-    load.currentTier ||
-      load.paidTier ||
-      (load.allowedTiers && load.allowedTiers.length > 0),
+    load.currentTier || load.paidTier || (load.allowedTiers && load.allowedTiers.length > 0),
   );
   if (!canOnboard && !rawLoad) {
     const reasons = (load.ineligibleTiers ?? [])
@@ -218,20 +271,35 @@ async function discoverOnHost(input: {
     if (reasons.length) {
       assistLog(log, `[code-assist] loadCodeAssist ${baseURL} ineligible: ${reasons.join("; ")}`);
     }
-    return { projectId: null, sawEnterpriseShared };
+    return { projectId: null, sawEnterpriseShared, needsUserProject: false };
   }
 
-  const tierId =
-    (load.allowedTiers ?? []).find((t) => t.isDefault)?.id ??
-    load.allowedTiers?.[0]?.id ??
-    load.currentTier?.id ??
-    load.paidTier?.id ??
-    FREE_TIER;
+  const tier = selectOnboardTier(load);
+  const tierId = tier.id ?? FREE_TIER;
+  const needsUserProject = tierNeedsUserProject(tier);
 
-  const onboarded = await onboardUserOnHost({ baseURL, headers, doFetch, sleep, tierId, log });
+  if (needsUserProject && !userProject) {
+    assistLog(
+      log,
+      `[code-assist] ${baseURL} offers tier=${tierId} which requires a user GCP project (free-tier ineligible or not default)`,
+    );
+    return { projectId: null, sawEnterpriseShared, needsUserProject: true };
+  }
+
+  const onboarded = await onboardUserOnHost({
+    baseURL,
+    headers,
+    doFetch,
+    sleep,
+    tierId,
+    log,
+    userProject,
+    needsUserProject,
+  });
   return {
     projectId: onboarded.projectId,
     sawEnterpriseShared: sawEnterpriseShared || onboarded.sawEnterpriseShared,
+    needsUserProject: needsUserProject || onboarded.needsUserProject,
   };
 }
 
@@ -241,30 +309,11 @@ function summarizeTiers(load: LoadCodeAssistResponse): string {
   if (load.paidTier?.id) parts.push(`paid=${load.paidTier.id}`);
   const allowed = (load.allowedTiers ?? []).map((t) => t.id).filter(Boolean);
   if (allowed.length) parts.push(`allowed=${allowed.join(",")}`);
-  const ineligible = (load.ineligibleTiers ?? []).map((t) => t.tierId ?? t.reasonCode).filter(Boolean);
+  const ineligible = (load.ineligibleTiers ?? [])
+    .map((t) => t.tierId ?? t.reasonCode)
+    .filter(Boolean);
   if (ineligible.length) parts.push(`ineligible=${ineligible.join(",")}`);
   return parts.length ? parts.join(" ") : "(none)";
-}
-
-/** Final fallback used by CLIProxyAPI-style clients: free-tier onboard on daily only. */
-async function onboardFreeTierOnDaily(input: {
-  headers: Record<string, string>;
-  doFetch: typeof fetch;
-  sleep: (ms: number) => Promise<void>;
-  log?: (line: string) => void;
-}): Promise<HostDiscovery> {
-  assistLog(
-    input.log,
-    `[code-assist] trying free-tier onboardUser on ${CLOUD_CODE_DAILY_BASE_URL} after hosts returned no personal project`,
-  );
-  return onboardUserOnHost({
-    baseURL: CLOUD_CODE_DAILY_BASE_URL,
-    headers: input.headers,
-    doFetch: input.doFetch,
-    sleep: input.sleep,
-    tierId: FREE_TIER,
-    log: input.log,
-  });
 }
 
 async function onboardUserOnHost(input: {
@@ -274,19 +323,31 @@ async function onboardUserOnHost(input: {
   sleep: (ms: number) => Promise<void>;
   tierId: string;
   log?: (line: string) => void;
+  userProject: string | null;
+  needsUserProject: boolean;
 }): Promise<HostDiscovery> {
-  const { baseURL, headers, doFetch, sleep, tierId, log } = input;
+  const { baseURL, headers, doFetch, sleep, tierId, log, userProject, needsUserProject } = input;
+
+  const body: Record<string, unknown> = {
+    tier_id: tierId,
+    metadata: ANTIGRAVITY_ONBOARD_METADATA,
+  };
+  // Free-tier must NOT send a project (Precondition Failed). Standard/legacy need the user's.
+  if (needsUserProject && userProject) {
+    body.cloudaicompanionProject = userProject;
+  }
 
   let lro: OnboardUserResponse;
   try {
-    assistLog(log, `[code-assist] onboardUser ${baseURL} tier=${tierId}`);
-    lro = await postJson<OnboardUserResponse>(doFetch, `${baseURL}:onboardUser`, headers, {
-      tier_id: tierId,
-      metadata: ANTIGRAVITY_ONBOARD_METADATA,
-    });
+    assistLog(
+      log,
+      `[code-assist] onboardUser ${baseURL} tier=${tierId}` +
+        `${userProject && needsUserProject ? ` cloudaicompanionProject=${userProject}` : ""}`,
+    );
+    lro = await postJson<OnboardUserResponse>(doFetch, `${baseURL}:onboardUser`, headers, body);
   } catch (error) {
     assistLog(log, `[code-assist] onboardUser ${baseURL}: ${(error as Error).message}`);
-    return { projectId: null, sawEnterpriseShared: false };
+    return { projectId: null, sawEnterpriseShared: false, needsUserProject };
   }
 
   let polls = 0;
@@ -297,14 +358,16 @@ async function onboardUserOnHost(input: {
       lro = await getJson<OnboardUserResponse>(doFetch, `${baseURL}/${lro.name}`, headers);
     } catch (error) {
       assistLog(log, `[code-assist] onboard poll ${baseURL}: ${(error as Error).message}`);
-      return { projectId: null, sawEnterpriseShared: false };
+      return { projectId: null, sawEnterpriseShared: false, needsUserProject };
     }
   }
 
-  const fromOnboard = sanitizePersonalCloudCodeProject(readProjectId(lro.response?.cloudaicompanionProject));
+  const fromOnboard = sanitizePersonalCloudCodeProject(
+    readProjectId(lro.response?.cloudaicompanionProject),
+  );
   if (fromOnboard) {
     assistLog(log, `[code-assist] onboardUser ${baseURL} provisioned personal project ${fromOnboard}`);
-    return { projectId: fromOnboard, sawEnterpriseShared: false };
+    return { projectId: fromOnboard, sawEnterpriseShared: false, needsUserProject: false };
   }
   const rawOnboard = readProjectId(lro.response?.cloudaicompanionProject);
   if (rawOnboard) {
@@ -315,10 +378,21 @@ async function onboardUserOnHost(input: {
     return {
       projectId: null,
       sawEnterpriseShared: rawOnboard === GOOGLE_ENTERPRISE_CLOUD_CODE_PROJECT,
+      needsUserProject,
     };
   }
+
+  // Standard-tier onboard often returns done with no companion id — use the user project.
+  if (userProject && needsUserProject) {
+    assistLog(
+      log,
+      `[code-assist] onboardUser ${baseURL} done without companion project; using user GCP project=${userProject}`,
+    );
+    return { projectId: userProject, sawEnterpriseShared: false, needsUserProject: false };
+  }
+
   assistLog(log, `[code-assist] onboardUser ${baseURL} done but no cloudaicompanionProject in response`);
-  return { projectId: null, sawEnterpriseShared: false };
+  return { projectId: null, sawEnterpriseShared: false, needsUserProject };
 }
 
 function readProjectId(value: unknown): string | null {

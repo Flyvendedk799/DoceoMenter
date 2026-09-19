@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ensureCodeAssistProject } from "./codeAssist.js";
+import { ensureCodeAssistProject, gcpProjectRequiredMessage } from "./codeAssist.js";
 
 type Captured = { url: string; method: string; body: unknown; headers: Record<string, string> };
 
@@ -27,15 +27,21 @@ function recorder(responses: Array<{ status?: number; body: unknown }>) {
 }
 
 describe("ensureCodeAssistProject", () => {
-  it("returns an already-known project id without calling the network", async () => {
-    const { calls, impl } = recorder([]);
+  it("falls back to a stored personal GCP project when discovery yields nothing", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { calls, impl } = recorder([
+      { body: { ineligibleTiers: [{ reasonMessage: "nope" }] } },
+      { body: { ineligibleTiers: [{ reasonMessage: "nope" }] } },
+      { status: 403, body: { error: { message: "forbidden" } } },
+    ]);
     const discovered = await ensureCodeAssistProject({
       accessToken: "ya29",
       projectId: "already-known",
       fetchImpl: impl,
     });
     expect(discovered).toEqual({ projectId: "already-known", isDogfood: false });
-    expect(calls).toHaveLength(0);
+    expect(calls.length).toBeGreaterThan(0);
+    error.mockRestore();
   });
 
   it("forwards discovery steps to an optional log sink for the run UI", async () => {
@@ -124,21 +130,22 @@ describe("ensureCodeAssistProject", () => {
       tier_id: "free-tier",
       metadata: { ide_type: "ANTIGRAVITY", ide_name: "antigravity" },
     });
+    expect(calls[1]!.body).not.toHaveProperty("cloudaicompanionProject");
   });
 
   it("polls onboardUser until done when the first response is a long-running op", async () => {
     const { calls, impl } = recorder([
       {
         body: {
-          currentTier: { id: "legacy-tier" },
-          allowedTiers: [{ id: "legacy-tier", isDefault: true }],
+          currentTier: { id: "free-tier" },
+          allowedTiers: [{ id: "free-tier", isDefault: true }],
         },
       },
       { body: { name: "operations/op-1", done: false } },
       {
         body: {
           done: true,
-          response: { cloudaicompanionProject: { id: "legacy-managed" } },
+          response: { cloudaicompanionProject: { id: "free-managed" } },
         },
       },
     ]);
@@ -148,8 +155,104 @@ describe("ensureCodeAssistProject", () => {
       fetchImpl: impl,
       sleep: async () => {},
     });
-    expect(discovered?.projectId).toBe("legacy-managed");
-    expect(calls[1]!.body).toMatchObject({ tier_id: "legacy-tier" });
+    expect(discovered?.projectId).toBe("free-managed");
+    expect(calls[1]!.body).toMatchObject({ tier_id: "free-tier" });
+  });
+
+  it("throws when Google only offers standard-tier and no user GCP project is set", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { calls, impl } = recorder([
+      {
+        body: {
+          allowedTiers: [
+            {
+              id: "standard-tier",
+              isDefault: true,
+              userDefinedCloudaicompanionProject: true,
+            },
+          ],
+          ineligibleTiers: [{ tierId: "free-tier", reasonCode: "INELIGIBLE" }],
+        },
+      },
+      {
+        body: {
+          allowedTiers: [
+            {
+              id: "standard-tier",
+              isDefault: true,
+              userDefinedCloudaicompanionProject: true,
+            },
+          ],
+          ineligibleTiers: [{ tierId: "free-tier", reasonCode: "INELIGIBLE" }],
+        },
+      },
+    ]);
+    await expect(
+      ensureCodeAssistProject({
+        accessToken: "ya29",
+        isDogfood: true,
+        fetchImpl: impl,
+        sleep: async () => {},
+      }),
+    ).rejects.toThrow(gcpProjectRequiredMessage());
+    // Must not waste a free-tier daily onboard after Google already required a user project.
+    expect(calls.every((c) => !String(c.url).endsWith(":onboardUser"))).toBe(true);
+    error.mockRestore();
+  });
+
+  it("onboards standard-tier with the user GCP project and uses it when onboard omits companion id", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { calls, impl } = recorder([
+      {
+        body: {
+          allowedTiers: [
+            {
+              id: "standard-tier",
+              isDefault: true,
+              userDefinedCloudaicompanionProject: true,
+            },
+          ],
+          ineligibleTiers: [{ tierId: "free-tier", reasonCode: "INELIGIBLE" }],
+        },
+      },
+      {
+        body: {
+          done: true,
+          response: {},
+        },
+      },
+    ]);
+    const discovered = await ensureCodeAssistProject({
+      accessToken: "ya29",
+      isDogfood: true,
+      projectId: "flyvendee-gcp",
+      fetchImpl: impl,
+      sleep: async () => {},
+    });
+    expect(discovered).toEqual({ projectId: "flyvendee-gcp", isDogfood: true });
+    expect(calls[0]!.body).toMatchObject({ cloudaicompanionProject: "flyvendee-gcp" });
+    expect(calls[1]!.body).toMatchObject({
+      tier_id: "standard-tier",
+      cloudaicompanionProject: "flyvendee-gcp",
+    });
+    error.mockRestore();
+  });
+
+  it("uses the user GCP project when load already has currentTier but no companion project", async () => {
+    const { impl } = recorder([
+      {
+        body: {
+          currentTier: { id: "standard-tier", userDefinedCloudaicompanionProject: true },
+        },
+      },
+    ]);
+    const discovered = await ensureCodeAssistProject({
+      accessToken: "ya29",
+      isDogfood: true,
+      projectId: "my-pro-project",
+      fetchImpl: impl,
+    });
+    expect(discovered).toEqual({ projectId: "my-pro-project", isDogfood: true });
   });
 
   it("tries the next host when the first only returns TOS ineligible", async () => {

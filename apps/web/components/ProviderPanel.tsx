@@ -438,10 +438,11 @@ function GeminiConnect({
 }
 
 /**
- * Optional personal GCP project override.
+ * Personal GCP project for Google AI Pro/Ultra (Code Assist standard-tier).
  *
- * Antigravity normally discovers a managed project like `agy` does. Only set this to your own
- * GCP project — never Google's enterprise shared project `aicode-consumers`.
+ * Free-tier accounts get a managed project from Google. Pro/Ultra is often ineligible for
+ * free-tier and must supply a project you own — same as `GOOGLE_CLOUD_PROJECT` in gemini-cli.
+ * Never set Google's enterprise shared project `aicode-consumers`.
  */
 function ProjectIdField({ status, onRefresh }: { status: ProviderStatus; onRefresh: () => void }) {
   const [value, setValue] = useState(status.projectId ?? "");
@@ -471,12 +472,20 @@ function ProjectIdField({ status, onRefresh }: { status: ProviderStatus; onRefre
 
   return (
     <label className="flex flex-col gap-2">
-      <span className="font-mono text-[11px] tracking-label text-fg-faint">
-        PERSONAL GCP PROJECT{" "}
-        <span className="normal-case tracking-normal text-fg-faint">
-          (optional — leave blank unless you have your own project)
-        </span>
-      </span>
+      <span className="font-mono text-[11px] tracking-label text-fg-faint">PERSONAL GCP PROJECT</span>
+      <p className="text-[12.5px] leading-[1.6] text-fg-muted">
+        Google AI Pro/Ultra usually needs a GCP project you own (enable Gemini for Google Cloud on
+        it). Free-tier Code Assist can leave this blank. Create one at{" "}
+        <a
+          href="https://console.cloud.google.com/"
+          target="_blank"
+          rel="noreferrer"
+          className="text-accent underline-offset-2 hover:underline"
+        >
+          console.cloud.google.com
+        </a>
+        .
+      </p>
       <div className="flex flex-wrap gap-2">
         <input
           type="text"

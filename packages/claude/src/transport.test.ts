@@ -602,7 +602,48 @@ describe("gemini wire", () => {
     } catch (error) {
       message = (error as Error).message;
     }
-    expect(message).toMatch(/no Cloud Code project|aicode scope|Connect again/i);
+    expect(message).toMatch(/PERSONAL GCP PROJECT|no Cloud Code project|standard-tier/i);
     expect(message).not.toMatch(/Pick a lighter model/i);
+  });
+
+  it("explains #3501 without a GCP project as standard-tier setup, not a wrong Google account", async () => {
+    const { impl } = recorder([
+      {
+        status: 403,
+        body: {
+          error: {
+            message:
+              "You do not have a valid license of this product. Please contact your administrator to request a license. If you are not an enterprise user and believe you are receiving this message as an error, please try using the latest version and logging in again. (#3501)",
+            details: [{ reason: "SUBSCRIPTION_REQUIRED" }],
+          },
+        },
+      },
+    ]);
+    const transport = createTransport({
+      provider: "gemini-cli",
+      credential: {
+        kind: "subscription",
+        wire: "gemini",
+        accessToken: "gcli-token",
+        projectId: null,
+        isDogfood: true,
+        source: "account",
+      },
+      modelPrimary: "gemini-3.1-pro",
+      modelFallback: "gemini-3.1-pro",
+      logger: () => {},
+      fetchImpl: impl,
+      configureAt: "the provider panel",
+    });
+
+    let message = "";
+    try {
+      await transport.start(SYSTEM, [TOOL], 1000).ask("go");
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toMatch(/#3501|SUBSCRIPTION_REQUIRED/i);
+    expect(message).toMatch(/PERSONAL GCP PROJECT|standard-tier|GCP project/i);
+    expect(message).not.toMatch(/Disconnect and Connect again with the Google account/i);
   });
 });
