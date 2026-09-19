@@ -161,16 +161,14 @@ async function resolveCodexSubscription(
 }
 
 /**
- * A Gemini / Antigravity subscription — same two-tier shape as Claude: the account's own
- * connected login first, the machine's own Antigravity (`agy`) login second.
+ * Antigravity subscription — UI Connect first, same idea as Claude Code's panel login.
  *
- * There is no third, deployment-wide fallback the way the metered providers have one.
+ * Browser visitors always have an account cookie. For those runs we **never** fall through to
+ * the host's `agy` login on ServerHoster: that would spend the operator's machine quota while
+ * the visitor thought they had signed in (or just switched accounts) in the panel. Connect
+ * Antigravity in the provider panel is the only personal path for a browser session.
  *
- * Browser visitors always have an account cookie (minted on first hit). That must *not*
- * block the machine login the way an earlier #3501 workaround did — Claude falls through
- * to `claude` on the host when the panel is not connected; Antigravity does the same with
- * `agy`. Forcing provider-panel Google OAuth is how personal accounts got routed onto
- * enterprise project `aicode-consumers` and failed with serviceUsageConsumer 403s.
+ * Machine `agy` remains available only when there is no browser account id (headless/local).
  */
 async function resolveGeminiSubscription(
   options: ResolveOptions,
@@ -200,7 +198,10 @@ async function resolveGeminiSubscription(
         source: "account",
       };
     }
-    // Fall through to machine Antigravity — same as Claude when the panel is empty.
+    throw new CredentialError(
+      "No Antigravity account is connected for this browser. Open the provider panel, choose Antigravity, and Connect with your personal Google AI account — the same idea as signing in with Claude Code. This run will not use the machine `agy` login on the server.",
+      "gemini-cli",
+    );
   }
 
   if (runtime.config.allowLocalCli) {
@@ -227,7 +228,7 @@ async function resolveGeminiSubscription(
   }
 
   throw new CredentialError(
-    "No Antigravity login is connected. Run `agy` on the machine hosting DoceoMenter and sign in with your personal Google AI account, or Connect Antigravity from the provider panel.",
+    "No Antigravity login is connected. Connect Antigravity from the provider panel with your personal Google AI account.",
     "gemini-cli",
   );
 }
