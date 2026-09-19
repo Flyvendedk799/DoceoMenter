@@ -250,6 +250,30 @@ describe("ShotSchema viewport bounds", () => {
       "github-readme",
     ]);
   });
+
+  it("dedupes omitted shot ids so captures do not overwrite each other", () => {
+    const plan = CapturePlanSchema.safeParse({
+      shots: [
+        { description: "Readme", target: "github-readme", importance: 1 },
+        {
+          description: "Arch A",
+          target: "code-architecture",
+          importance: 2,
+          spec: "graph TD\n  A --> B\n  B --> C",
+        },
+        {
+          description: "Arch B",
+          target: "code-architecture",
+          importance: 2,
+          spec: "graph TD\n  X --> Y\n  Y --> Z",
+        },
+      ],
+    });
+    expect(plan.success).toBe(true);
+    if (!plan.success) return;
+    const ids = plan.data.shots.map((s) => s.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
 });
 
 describe("isValidRunId", () => {

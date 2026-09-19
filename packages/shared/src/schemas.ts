@@ -399,8 +399,15 @@ export function normalizeShotInput(raw: unknown): unknown {
 
   if (typeof s.route !== "string" || s.route.trim() === "") {
     if (s.target === "live-app") s.route = "/";
-  } else if (!s.route.startsWith("/")) {
-    s.route = `/${s.route}`;
+  } else {
+    const route = s.route.trim();
+    // CLI/TUI commands must stay unprefixed (spaces, flags). Browser paths get a leading /.
+    const looksLikeCommand = /\s/.test(route) || route.includes("--") || /^npx\b|^node\b|^npm\b|^pnpm\b|^yarn\b/.test(route);
+    if (!route.startsWith("/") && !looksLikeCommand) {
+      s.route = `/${route}`;
+    } else {
+      s.route = route;
+    }
   }
 
   if (typeof s.caption !== "string" || s.caption.trim() === "") {
@@ -486,7 +493,20 @@ export function normalizeCapturePlanInput(raw: unknown): unknown {
   const o = { ...(value as Record<string, unknown>) };
   const shots = shotsFromUnknown(o.shots);
   if (shots) {
-    o.shots = shots.map(normalizeShotInput).slice(0, 10);
+    const normalized = shots.map(normalizeShotInput).slice(0, 10);
+    // Gemini often omits ids → every shot becomes "shot" and files overwrite each other
+    // (run 36989f1f9e5b wrote four captures to the same shot.webp).
+    const seen = new Map<string, number>();
+    o.shots = normalized.map((shot) => {
+      if (!shot || typeof shot !== "object" || Array.isArray(shot)) return shot;
+      const s = { ...(shot as Record<string, unknown>) };
+      const base =
+        typeof s.id === "string" && s.id.trim().length > 0 ? s.id.trim() : "shot";
+      const n = (seen.get(base) ?? 0) + 1;
+      seen.set(base, n);
+      s.id = n === 1 ? base : `${base}-${n}`;
+      return s;
+    });
   }
   return o;
 }
