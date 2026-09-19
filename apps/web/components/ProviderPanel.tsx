@@ -264,8 +264,6 @@ function GeminiConnect({
   onRefresh: () => void;
 }) {
   const [loginUrl, setLoginUrl] = useState<string | undefined>();
-  // Personal Google AI / Antigravity plans use the G1 client by default (no enterprise `aicode` scope).
-  const [isDogfood, setIsDogfood] = useState(true);
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | undefined>();
@@ -274,11 +272,13 @@ function GeminiConnect({
     setBusy(true);
     setNote(undefined);
     try {
+      // Always G1 / personal Google AI client — the prod Antigravity client does not expose
+      // gemini-3.1-pro for personal accounts (404 "does not know a model").
       const response = await fetch("/api/gemini/login", {
         method: "POST",
         credentials: "same-origin",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ isDogfood }),
+        body: JSON.stringify({ isDogfood: true }),
       });
       const body = (await response.json().catch(() => ({}))) as { url?: string; message?: string };
       if (!response.ok || !body.url) throw new Error(body.message ?? `HTTP ${response.status}`);
@@ -385,10 +385,10 @@ function GeminiConnect({
         <div className="space-y-2 pt-2 border-t border-line">
           {!loginUrl ? (
             <div className="flex flex-col gap-2">
-              <label className="flex items-center gap-2 text-[12.5px] text-fg-muted cursor-pointer">
-                <input type="checkbox" checked={isDogfood} onChange={(e) => setIsDogfood(e.target.checked)} className="cursor-pointer" />
-                Personal Google AI / G1 client (recommended — leave on)
-              </label>
+              <p className="text-[12.5px] leading-[1.6] text-fg-muted">
+                Signs in with the personal Google AI / G1 client (required for{" "}
+                <span className="text-fg">gemini-3.1-pro</span>).
+              </p>
               <button
                 type="button"
                 disabled={busy}
@@ -412,14 +412,9 @@ function GeminiConnect({
         <div className="flex flex-col gap-2">
           <p className="dm-well rounded-sm px-3.5 py-3 text-[12.5px] leading-[1.65] text-fg-muted">
             Sign in with the personal Google AI account that should pay for this run — same flow as
-            Claude Code in the panel. Disconnect and reconnect if you connected before this fix
-            (older tokens requested an enterprise Code Assist scope). Enterprise/team licenses are
-            not supported.
+            Claude Code in the panel (G1 / personal client). Disconnect and reconnect if you
+            connected before this fix. Enterprise/team licenses are not supported.
           </p>
-          <label className="flex items-center gap-2 text-[12.5px] text-fg-muted cursor-pointer">
-            <input type="checkbox" checked={isDogfood} onChange={(e) => setIsDogfood(e.target.checked)} className="cursor-pointer" />
-            Personal Google AI / G1 client (recommended — leave on)
-          </label>
           <button
             type="button"
             disabled={busy}

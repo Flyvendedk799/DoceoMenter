@@ -159,7 +159,7 @@ describe("ensureCodeAssistProject", () => {
     expect(calls[1]!.body).toMatchObject({ tier_id: "free-tier" });
   });
 
-  it("soft-continues when Google only offers standard-tier and no user GCP project is set", async () => {
+  it("lists companion projects when load/onboard leave no personal project", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const { calls, impl } = recorder([
       {
@@ -174,6 +174,9 @@ describe("ensureCodeAssistProject", () => {
           ineligibleTiers: [{ tierId: "free-tier", reasonCode: "INELIGIBLE" }],
         },
       },
+      // onboardUser standard-tier — done, no companion
+      { body: { done: true, response: {} } },
+      // prod load + onboard
       {
         body: {
           allowedTiers: [
@@ -183,9 +186,10 @@ describe("ensureCodeAssistProject", () => {
               userDefinedCloudaicompanionProject: true,
             },
           ],
-          ineligibleTiers: [{ tierId: "free-tier", reasonCode: "INELIGIBLE" }],
         },
       },
+      { body: { done: true, response: {} } },
+      // sandbox load + onboard
       {
         body: {
           allowedTiers: [
@@ -195,20 +199,62 @@ describe("ensureCodeAssistProject", () => {
               userDefinedCloudaicompanionProject: true,
             },
           ],
-          ineligibleTiers: [{ tierId: "free-tier", reasonCode: "INELIGIBLE" }],
         },
       },
+      { body: { done: true, response: {} } },
+      // listCloudAICompanionProjects on daily
+      { body: { projects: [{ id: "listed-managed-99" }] } },
     ]);
-    // Like agy: never hard-fail just because Google asked for a user project we do not have yet.
-    await expect(
-      ensureCodeAssistProject({
-        accessToken: "ya29",
-        isDogfood: true,
-        fetchImpl: impl,
-        sleep: async () => {},
-      }),
-    ).resolves.toBeNull();
-    expect(calls.every((c) => !String(c.url).endsWith(":onboardUser"))).toBe(true);
+    const discovered = await ensureCodeAssistProject({
+      accessToken: "ya29",
+      isDogfood: true,
+      fetchImpl: impl,
+      sleep: async () => {},
+    });
+    expect(discovered).toEqual({ projectId: "listed-managed-99", isDogfood: true });
+    expect(calls.some((c) => String(c.url).endsWith(":listCloudAICompanionProjects"))).toBe(true);
+    error.mockRestore();
+  });
+
+  it("falls back to body-only aicode-consumers when standard-tier yields no project at all", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const emptyStandard = {
+      body: {
+        allowedTiers: [
+          {
+            id: "standard-tier",
+            isDefault: true,
+            userDefinedCloudaicompanionProject: true,
+          },
+        ],
+        ineligibleTiers: [{ tierId: "free-tier", reasonCode: "INELIGIBLE" }],
+      },
+    };
+    const { calls, impl } = recorder([
+      emptyStandard,
+      { body: { done: true, response: {} } },
+      emptyStandard,
+      { body: { done: true, response: {} } },
+      emptyStandard,
+      { body: { done: true, response: {} } },
+      { body: { projects: [] } },
+      { body: { projects: [] } },
+      { body: { projects: [] } },
+      { status: 403, body: { error: { message: "not eligible" } } },
+    ]);
+    const discovered = await ensureCodeAssistProject({
+      accessToken: "ya29",
+      isDogfood: true,
+      fetchImpl: impl,
+      sleep: async () => {},
+    });
+    expect(discovered).toEqual({
+      projectId: null,
+      bodyOnlyProjectId: "aicode-consumers",
+      isDogfood: true,
+    });
+    expect(calls.some((c) => String(c.url).endsWith(":onboardUser"))).toBe(true);
+    expect(calls.some((c) => String(c.url).endsWith(":listCloudAICompanionProjects"))).toBe(true);
     error.mockRestore();
   });
 

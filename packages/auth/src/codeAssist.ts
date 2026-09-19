@@ -139,36 +139,48 @@ export async function ensureCodeAssistProject(
     }
   }
 
-  // Free-tier last resort only when Google did not already say this account needs a user GCP project.
-  if (!needsUserProject) {
-    const dailyFallback = await onboardUserOnHost({
-      baseURL: CLOUD_CODE_DAILY_BASE_URL,
-      headers,
-      doFetch,
-      sleep,
-      tierId: FREE_TIER,
-      log: input.log,
-      userProject: null,
-      needsUserProject: false,
-    });
-    if (dailyFallback.sawEnterpriseShared) sawEnterpriseShared = true;
-    if (dailyFallback.projectId) {
-      assistLog(
-        input.log,
-        `[code-assist] personal project=${dailyFallback.projectId} from daily free-tier onboard`,
-      );
-      return { projectId: dailyFallback.projectId, isDogfood: true };
-    }
+  // Working Antigravity clients call this when load/onboard omit cloudaicompanionProject —
+  // that is how they avoid asking the user to type a GCP project id.
+  const listed = await listCloudAICompanionProjects({
+    hosts,
+    headers,
+    doFetch,
+    log: input.log,
+  });
+  if (listed) {
+    assistLog(
+      input.log,
+      `[code-assist] personal project=${listed.projectId} from listCloudAICompanionProjects on ${listed.baseURL}`,
+    );
+    return { projectId: listed.projectId, isDogfood: isDailyHost(listed.baseURL) };
+  }
+
+  // Always try daily free-tier onboard as a last provision attempt (even when Google preferred
+  // standard-tier). Ineligible free-tier returns 403; that is fine — we keep going.
+  const dailyFallback = await onboardUserOnHost({
+    baseURL: CLOUD_CODE_DAILY_BASE_URL,
+    headers,
+    doFetch,
+    sleep,
+    tierId: FREE_TIER,
+    log: input.log,
+    userProject: null,
+    needsUserProject: false,
+  });
+  if (dailyFallback.sawEnterpriseShared) sawEnterpriseShared = true;
+  if (dailyFallback.projectId) {
+    assistLog(
+      input.log,
+      `[code-assist] personal project=${dailyFallback.projectId} from daily free-tier onboard`,
+    );
+    return { projectId: dailyFallback.projectId, isDogfood: true };
   }
 
   if (needsUserProject && !userProject) {
-    // Do not hard-fail here — `agy` never makes the user type a project. Soft-continue so
-    // generateContent can still try (body-only companion / no project) and surface a clear
-    // #3501 / 429 message that points at reconnect first, optional GCP field last.
     assistLog(
       input.log,
       `[code-assist] Google offered a tier that expects a user GCP project but none is set; ` +
-        `continuing without one (agy never prompts for this — discovery should have provisioned). ` +
+        `listCloudAICompanionProjects also empty. ` +
         gcpProjectRequiredMessage(),
     );
   }
@@ -183,10 +195,13 @@ export async function ensureCodeAssistProject(
     return { projectId: userProject, isDogfood: Boolean(input.isDogfood) || needsUserProject };
   }
 
-  if (sawEnterpriseShared) {
+  if (sawEnterpriseShared || needsUserProject) {
+    // G1/personal tokens: body-only companion (never x-goog-user-project). Better than #3501
+    // with no project at all — matches the non-G1 discovery path that only names aicode-consumers.
     assistLog(
       input.log,
-      `[code-assist] Google only named ${GOOGLE_ENTERPRISE_CLOUD_CODE_PROJECT}; using it as generateContent body project without x-goog-user-project (daily host)`,
+      `[code-assist] falling back to body-only ${GOOGLE_ENTERPRISE_CLOUD_CODE_PROJECT} on daily ` +
+        `(sawEnterpriseShared=${sawEnterpriseShared} needsUserProject=${needsUserProject})`,
     );
     return {
       projectId: null,
@@ -288,9 +303,9 @@ async function discoverOnHost(input: {
   if (needsUserProject && !userProject) {
     assistLog(
       log,
-      `[code-assist] ${baseURL} offers tier=${tierId} which requires a user GCP project (free-tier ineligible or not default)`,
+      `[code-assist] ${baseURL} offers tier=${tierId} which typically wants a user GCP project; ` +
+        `still calling onboardUser (agy does not prompt — Google may provision anyway)`,
     );
-    return { projectId: null, sawEnterpriseShared, needsUserProject: true };
   }
 
   const onboarded = await onboardUserOnHost({
@@ -321,6 +336,80 @@ function summarizeTiers(load: LoadCodeAssistResponse): string {
     .filter(Boolean);
   if (ineligible.length) parts.push(`ineligible=${ineligible.join(",")}`);
   return parts.length ? parts.join(" ") : "(none)";
+}
+
+/**
+ * List managed companion projects — the step working Antigravity clients take when
+ * loadCodeAssist / onboardUser do not return cloudaicompanionProject (so the user never
+ * has to type a GCP project id).
+ */
+async function listCloudAICompanionProjects(input: {
+  hosts: readonly string[];
+  headers: Record<string, string>;
+  doFetch: typeof fetch;
+  log?: (line: string) => void;
+}): Promise<{ projectId: string; baseURL: string } | null> {
+  for (const baseURL of input.hosts) {
+    try {
+      assistLog(input.log, `[code-assist] listCloudAICompanionProjects ${baseURL}`);
+      const payload = await postJson<unknown>(
+        input.doFetch,
+        `${baseURL}:listCloudAICompanionProjects`,
+        input.headers,
+        {},
+      );
+      const projectId = sanitizePersonalCloudCodeProject(extractListedProjectId(payload));
+      if (projectId) return { projectId, baseURL };
+      const raw = extractListedProjectId(payload);
+      if (raw === GOOGLE_ENTERPRISE_CLOUD_CODE_PROJECT) {
+        assistLog(
+          input.log,
+          `[code-assist] listCloudAICompanionProjects ${baseURL} only named enterprise project ${raw}`,
+        );
+      } else {
+        assistLog(
+          input.log,
+          `[code-assist] listCloudAICompanionProjects ${baseURL} returned no personal project`,
+        );
+      }
+    } catch (error) {
+      assistLog(
+        input.log,
+        `[code-assist] listCloudAICompanionProjects ${baseURL}: ${(error as Error).message}`,
+      );
+    }
+  }
+  return null;
+}
+
+/** Pull a project id out of listCloudAICompanionProjects / similar list payloads. */
+function extractListedProjectId(data: unknown): string | null {
+  if (!data || typeof data !== "object") return null;
+  const record = data as Record<string, unknown>;
+  const direct = readProjectId(
+    record.cloudaicompanionProject ??
+      record.antigravityProjectId ??
+      record.projectId ??
+      record.backendProjectId ??
+      record.project,
+  );
+  if (direct) return direct;
+  for (const key of ["projects", "projectIds", "cloudaicompanionProjects"]) {
+    const value = record[key];
+    if (!Array.isArray(value)) continue;
+    for (const item of value) {
+      if (typeof item === "string" && item.trim()) return item.trim();
+      if (item && typeof item === "object") {
+        const nested = readProjectId(
+          (item as { id?: unknown; projectId?: unknown; cloudaicompanionProject?: unknown }).id ??
+            (item as { projectId?: unknown }).projectId ??
+            (item as { cloudaicompanionProject?: unknown }).cloudaicompanionProject,
+        );
+        if (nested) return nested;
+      }
+    }
+  }
+  return null;
 }
 
 async function onboardUserOnHost(input: {
