@@ -1,5 +1,8 @@
 {
   "name": "doceomenter-fixture-static-site",
   "private": true,
-  "version": "0.0.0"
+  "version": "0.0.0",
+  "dependencies": {
+    "@flyvendedk799/ai-auth": "github:Flyvendedk799/ai-auth#main"
+  }
 }

@@ -288,14 +288,14 @@ describe("gemini wire", () => {
     ]);
     const transport = transportFor({ kind: "key", wire: "gemini", key: "AIza-key" }, impl, {
       provider: "gemini",
-      modelPrimary: "gemini-3-pro",
+      modelPrimary: "gemini-3.1-pro",
       modelFallback: "gemini-3-flash",
     });
 
     const turn = await transport.start(SYSTEM, [TOOL], 1000).ask("go");
 
     expect(calls[0]!.url).toBe(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro:generateContent",
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro:generateContent",
     );
     expect(calls[0]!.headers["x-goog-api-key"]).toBe("AIza-key");
     expect(calls[0]!.body.tools[0].functionDeclarations[0].name).toBe("submit_thing");
@@ -335,7 +335,7 @@ describe("gemini wire", () => {
     const transport = transportFor(
       { kind: "subscription", wire: "gemini", accessToken: "gcli-token", projectId: "my-project" },
       impl,
-      { provider: "gemini-cli", modelPrimary: "gemini-3-pro", modelFallback: "gemini-3-flash" },
+      { provider: "gemini-cli", modelPrimary: "gemini-3.1-pro", modelFallback: "gemini-3-flash" },
     );
     const conversation = transport.start(SYSTEM, [TOOL], 1000);
 

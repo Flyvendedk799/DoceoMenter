@@ -60,7 +60,7 @@ export const PROVIDERS: readonly ProviderDescriptor[] = [
     blurb: "Sign in with your Google account. Needs a Gemini Code Assist license on that account.",
     wire: "gemini",
     kind: "subscription",
-    defaults: { primary: "gemini-3-pro", fallback: "gemini-3-flash" },
+    defaults: { primary: "gemini-3.1-pro", fallback: "gemini-3-flash" },
   },
   {
     id: "gemini",
@@ -68,7 +68,7 @@ export const PROVIDERS: readonly ProviderDescriptor[] = [
     blurb: "A metered key. Encrypted here, masked for display, never readable back out.",
     wire: "gemini",
     kind: "key",
-    defaults: { primary: "gemini-3-pro", fallback: "gemini-3-flash" },
+    defaults: { primary: "gemini-3.1-pro", fallback: "gemini-3-flash" },
   },
 ];
 

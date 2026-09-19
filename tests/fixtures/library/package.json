@@ -3,5 +3,8 @@
   "private": true,
   "version": "0.0.0",
   "main": "./index.js",
-  "exports": "./index.js"
+  "exports": "./index.js",
+  "dependencies": {
+    "@flyvendedk799/ai-auth": "github:Flyvendedk799/ai-auth#main"
+  }
 }

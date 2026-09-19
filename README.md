@@ -183,7 +183,7 @@ The integration test in `apps/worker/src/pipeline.test.ts` exercises the full pi
 | `ANTHROPIC_MODEL_FALLBACK` | `claude-sonnet-5` | Used when the primary is rate-limited |
 | `OPENAI_API_KEY` | — | Deployment-wide key for the OpenAI provider |
 | `GEMINI_API_KEY` | — | Deployment-wide key for the Gemini provider |
-| `GEMINI_MODEL_PRIMARY` | `gemini-3-pro` | Primary model |
+| `GEMINI_MODEL_PRIMARY` | `gemini-3.1-pro` | Primary model |
 | `GEMINI_MODEL_FALLBACK` | `gemini-3-flash` | Used when the primary is rate-limited |
 | `GEMINI_PROJECT_ID` | — | GCP project for a machine-logged-in Gemini subscription's Code Assist license, if it needs one |
 | `REDIS_URL` | `redis://127.0.0.1:6379` | Queue + pub/sub |

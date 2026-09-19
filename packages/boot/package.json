@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@doceomenter/shared": "workspace:*",
+    "@flyvendedk799/ai-auth": "github:Flyvendedk799/ai-auth#main",
     "execa": "9.5.1"
   },
   "devDependencies": {

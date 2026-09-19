@@ -4,5 +4,8 @@
   "version": "0.0.0",
   "bin": {
     "doceo-fixture-cli": "./bin.js"
+  },
+  "dependencies": {
+    "@flyvendedk799/ai-auth": "github:Flyvendedk799/ai-auth#main"
   }
 }

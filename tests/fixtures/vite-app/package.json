@@ -10,5 +10,8 @@
   },
   "devDependencies": {
     "vite": "5.4.10"
+  },
+  "dependencies": {
+    "@flyvendedk799/ai-auth": "github:Flyvendedk799/ai-auth#main"
   }
 }
