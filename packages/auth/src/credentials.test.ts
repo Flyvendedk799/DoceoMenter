@@ -214,28 +214,32 @@ describe("gemini subscription resolution", () => {
     });
   });
 
-  it("does not call loadCodeAssist for Dogfood — proceeds without a managed project", async () => {
+  it("persists a managed project discovered via Dogfood daily loadCodeAssist", async () => {
     const runtime = await runtimeIn();
     await runtime.geminiAccounts.save("account-1", { ...identity, isDogfood: true });
 
-    const credential = await resolveProviderCredential({
+    const urls: string[] = [];
+    const fetchImpl = (async (input: any) => {
+      urls.push(typeof input === "string" ? input : String(input.url));
+      return new Response(
+        JSON.stringify({
+          currentTier: { id: "free-tier" },
+          cloudaicompanionProject: "dogfood-managed-99",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+
+    await resolveProviderCredential({
       provider: "gemini-cli",
       accountId: "account-1",
       runtime,
-      // Would fail if contacted — Dogfood must skip discovery.
-      fetchImpl: (async () => {
-        throw new Error("network should not be called");
-      }) as unknown as typeof fetch,
+      fetchImpl,
     });
 
-    expect(credential).toMatchObject({
-      kind: "subscription",
-      projectId: null,
-      isDogfood: true,
-      source: "account",
-    });
+    expect(urls[0]).toBe("https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist");
     expect(await runtime.geminiAccounts.status("account-1")).toMatchObject({
-      projectId: null,
+      projectId: "dogfood-managed-99",
       isDogfood: true,
     });
   });
