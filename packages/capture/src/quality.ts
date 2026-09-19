@@ -8,6 +8,8 @@ export type QualityResult = {
 
 const MIN_ENTROPY = 1.5;
 const MAX_UNIFORMITY = 0.985;
+/** Near-blank companion for low-entropy rejection (see evaluateImageQuality). */
+const BLANK_UNIFORMITY = 0.97;
 
 export async function evaluateImageQuality(pngPath: string): Promise<QualityResult> {
   const img = sharp(pngPath);
@@ -45,7 +47,12 @@ export async function evaluateImageQuality(pngPath: string): Promise<QualityResu
   const meanLum = stats.channels.reduce((a, c) => a + c.mean, 0) / stats.channels.length;
 
   const reasons: string[] = [];
-  if (entropy < MIN_ENTROPY) reasons.push(`low entropy ${entropy.toFixed(2)}`);
+  // Low entropy alone is not enough: dark-theme empty states (nav + headline
+  // on a large black field) are valid product screenshots but score ~0.9.
+  // Only reject as blank when the frame is also near-monochrome.
+  if (entropy < MIN_ENTROPY && uniformity > BLANK_UNIFORMITY) {
+    reasons.push(`low entropy ${entropy.toFixed(2)}`);
+  }
   if (uniformity > MAX_UNIFORMITY) reasons.push(`uniformity ${(uniformity * 100).toFixed(1)}%`);
   if ((meta.width ?? 0) < 320 || (meta.height ?? 0) < 240) {
     reasons.push(`tiny ${meta.width}×${meta.height}`);
