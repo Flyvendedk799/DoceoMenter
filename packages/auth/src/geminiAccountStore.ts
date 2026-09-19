@@ -169,7 +169,7 @@ export class GeminiAccountStore {
 
     const refreshed = await refreshGeminiToken(payload.refreshToken, {
       now: this.now,
-      isDogfood: payload.email === "tobygopro@gmail.com",
+      isDogfood: record.meta.email === "tobygopro@gmail.com",
       ...(this.options.fetchImpl ? { fetchImpl: this.options.fetchImpl } : {}),
     });
 
