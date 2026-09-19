@@ -260,11 +260,16 @@ export const ShotSchema = z.union([
 ]);
 export type Shot = z.infer<typeof ShotSchema>;
 
-export const CapturePlanSchema = z.preprocess(
+const CapturePlanObjectSchema = z.object({
+  shots: z.array(ShotSchema).min(1).max(10),
+});
+export type CapturePlan = z.infer<typeof CapturePlanObjectSchema>;
+
+/** Preprocess + object schema. Explicit `ZodType` so `z.preprocess` does not widen output to `unknown`. */
+export const CapturePlanSchema: z.ZodType<CapturePlan> = z.preprocess(
   normalizeCapturePlanInput,
-  z.object({ shots: z.array(ShotSchema).min(1).max(10) }),
-);
-export type CapturePlan = z.infer<typeof CapturePlanSchema>;
+  CapturePlanObjectSchema,
+) as z.ZodType<CapturePlan>;
 
 export const ConceptSchema = z.object({
   what: z.string().min(40),
