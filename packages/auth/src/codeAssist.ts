@@ -4,16 +4,13 @@
  * Personal and Google One accounts do not type a GCP project id. The CLI calls
  * `loadCodeAssist`, and if needed `onboardUser`, then uses the
  * `cloudaicompanionProject` Google returns — a managed project, not one the user owns.
- * Calling `generateContent` without that step is a common path to #3501 SUBSCRIPTION_REQUIRED.
+ *
+ * Returns null when Google refuses discovery (e.g. client TOS eligibility) so the caller
+ * can still attempt `generateContent` — hard-blocking the run here was worse than #3501.
  */
 
 import { antigravityCliOptions } from "@flyvendedk799/ai-auth";
-
-const METADATA = {
-  ideType: "IDE_UNSPECIFIED",
-  platform: "PLATFORM_UNSPECIFIED",
-  pluginType: "GEMINI",
-} as const;
+import { ANTIGRAVITY_CLIENT_METADATA, antigravityRequestHeaders } from "@doceomenter/shared";
 
 const FREE_TIER = "free-tier";
 const ONBOARD_POLL_MS = 2_000;
@@ -50,11 +47,19 @@ type OnboardUserResponse = {
 };
 
 /**
- * Returns a project id suitable for `x-goog-user-project` / `generateContent.project`.
+ * Returns a project id suitable for `x-goog-user-project` / `generateContent.project`,
+ * or null when discovery is refused / unavailable.
  */
-export async function ensureCodeAssistProject(input: EnsureCodeAssistProjectInput): Promise<string> {
+export async function ensureCodeAssistProject(
+  input: EnsureCodeAssistProjectInput,
+): Promise<string | null> {
   const existing = input.projectId?.trim() || null;
   if (existing) return existing;
+
+  // Dogfood / G1: `agy` often never needs loadCodeAssist for a typed project. Calling it
+  // with the wrong client identity returns "Client does not support Google TOS" and blocks
+  // the run before generateContent — skip discovery and let generateContent proceed.
+  if (input.isDogfood) return null;
 
   const wire = antigravityCliOptions({
     accessToken: input.accessToken,
@@ -62,28 +67,25 @@ export async function ensureCodeAssistProject(input: EnsureCodeAssistProjectInpu
     refreshToken: null,
     expiresAt: 0,
     email: null,
-    isDogfood: input.isDogfood ?? false,
+    isDogfood: false,
   });
   const baseURL = wire.baseURL ?? "https://cloudcode-pa.googleapis.com/v1internal";
   const doFetch = input.fetchImpl ?? fetch;
   const sleep = input.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
   const headers: Record<string, string> = {
     Authorization: `Bearer ${input.accessToken}`,
-    "Content-Type": "application/json",
+    ...antigravityRequestHeaders(),
   };
 
   let load: LoadCodeAssistResponse;
   try {
     load = await postJson<LoadCodeAssistResponse>(doFetch, `${baseURL}:loadCodeAssist`, headers, {
-      metadata: METADATA,
+      metadata: ANTIGRAVITY_CLIENT_METADATA,
     });
   } catch (error) {
-    throw new CodeAssistSetupError(
-      `Could not load Code Assist for this Google account (${(error as Error).message}). ` +
-        `Reconnect from the provider panel` +
-        `${input.isDogfood ? " with G1 Dogfood checked" : ""} and try again.`,
-      { cause: error },
-    );
+    // Soft-fail: still allow generateContent; the worker will surface #3501 if that fails too.
+    console.error(`[code-assist] loadCodeAssist failed: ${(error as Error).message}`);
+    return null;
   }
 
   if (typeof load.cloudaicompanionProject === "string" && load.cloudaicompanionProject.trim()) {
@@ -91,40 +93,35 @@ export async function ensureCodeAssistProject(input: EnsureCodeAssistProjectInpu
   }
 
   if (load.currentTier) {
-    throw new CodeAssistSetupError(
-      "Google says this account is already onboarded to Code Assist but returned no managed project. " +
-        "That usually means the license is on a different environment (Prod vs G1 Dogfood) — " +
-        "disconnect, toggle Dogfood to match where `agy` works, and connect again.",
+    console.error(
+      "[code-assist] onboarded account returned no managed project; continuing without one",
     );
+    return null;
   }
 
   if (load.ineligibleTiers?.length) {
     const reasons = load.ineligibleTiers
       .map((t) => t.reasonMessage)
       .filter((m): m is string => typeof m === "string" && m.length > 0);
-    throw new CodeAssistSetupError(
-      reasons.length
-        ? `This Google account is not eligible for Code Assist: ${reasons.join("; ")}`
-        : "This Google account is not eligible for Code Assist.",
-    );
+    const joined = reasons.join("; ");
+    // TOS / "individuals" eligibility is a client-identity refusal, not a missing license on
+    // the Google account. Do not hard-fail the run — generateContent may still work as `agy` does.
+    console.error(`[code-assist] loadCodeAssist ineligible: ${joined || "unknown"}`);
+    return null;
   }
 
   const tier = (load.allowedTiers ?? []).find((t) => t.isDefault) ?? load.allowedTiers?.[0];
   const tierId = tier?.id ?? FREE_TIER;
 
-  // Free tier must not send a user-defined project (CLI: Precondition Failed if you do).
   let lro: OnboardUserResponse;
   try {
     lro = await postJson<OnboardUserResponse>(doFetch, `${baseURL}:onboardUser`, headers, {
       tierId,
-      cloudaicompanionProject: undefined,
-      metadata: METADATA,
+      metadata: ANTIGRAVITY_CLIENT_METADATA,
     });
   } catch (error) {
-    throw new CodeAssistSetupError(
-      `Code Assist onboarding failed (${(error as Error).message}). Reconnect from the provider panel and try again.`,
-      { cause: error },
-    );
+    console.error(`[code-assist] onboardUser failed: ${(error as Error).message}`);
+    return null;
   }
 
   let polls = 0;
@@ -134,21 +131,12 @@ export async function ensureCodeAssistProject(input: EnsureCodeAssistProjectInpu
     try {
       lro = await getJson<OnboardUserResponse>(doFetch, `${baseURL}/${lro.name}`, headers);
     } catch (error) {
-      throw new CodeAssistSetupError(
-        `Timed out waiting for Code Assist onboarding (${(error as Error).message}).`,
-        { cause: error },
-      );
+      console.error(`[code-assist] onboard poll failed: ${(error as Error).message}`);
+      return null;
     }
   }
 
-  const discovered = lro.response?.cloudaicompanionProject?.id?.trim() || null;
-  if (!discovered) {
-    throw new CodeAssistSetupError(
-      "Code Assist onboarding finished without a managed project id. " +
-        "Try connecting again from the provider panel, matching the Dogfood toggle to where `agy` works.",
-    );
-  }
-  return discovered;
+  return lro.response?.cloudaicompanionProject?.id?.trim() || null;
 }
 
 async function postJson<T>(

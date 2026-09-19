@@ -26,6 +26,7 @@ import {
   withClaudeCodeIdentity,
 } from "@flyvendedk799/ai-auth";
 import { describeProviderError, providerErrorFacts, type ProviderId } from "@flyvendedk799/ai-auth/registry";
+import { antigravityRequestHeaders } from "@doceomenter/shared";
 
 export type Tool = Anthropic.Messages.Tool;
 export type SystemBlock = { type: "text"; text: string; cache_control?: { type: "ephemeral" } };
@@ -501,10 +502,10 @@ function geminiTransport(options: TransportOptions): Transport {
             const response = geminiSub
               ? await doFetch(`${cli.baseURL}:generateContent`, {
                   method: "POST",
-                  // `antigravityCliOptions` already set `Authorization`, `Content-Type` and, when a
-                  // project is on the identity, `x-goog-user-project` — nothing to add here.
-                  // Personal / Google One logins typically have no project id (same as `agy`).
-                  headers: cli.defaultHeaders ?? {},
+                  // Merge Antigravity identity headers on top of `antigravityCliOptions`
+                  // (Authorization / Content-Type / optional x-goog-user-project). Without
+                  // User-Agent + Client-Metadata Google answers "Client does not support Google TOS".
+                  headers: antigravityRequestHeaders(cli.defaultHeaders ?? {}),
                   body: JSON.stringify({
                     model: `models/${m}`,
                     ...(projectId ? { project: projectId } : {}),
