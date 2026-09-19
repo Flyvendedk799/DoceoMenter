@@ -40,6 +40,11 @@ export {
   type ProviderCredential,
   type ResolveOptions,
 } from "./credentials.js";
+export {
+  CodeAssistSetupError,
+  ensureCodeAssistProject,
+  type EnsureCodeAssistProjectInput,
+} from "./codeAssist.js";
 export { readAuthStatus, type AuthStatus, type ProviderStatus } from "./status.js";
 export {
   completeLogin,

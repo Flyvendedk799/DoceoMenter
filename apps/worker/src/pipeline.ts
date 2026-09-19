@@ -396,6 +396,11 @@ async function resolveCredential(opts: {
       inlineKey: opts.inlineKey,
     });
     opts.log(`[auth] ${opts.provider} credential from ${credential.source}`);
+    if (credential.kind === "subscription" && credential.provider === "gemini-cli") {
+      opts.log(
+        `[auth] gemini-cli project=${credential.projectId ?? "(none)"} dogfood=${credential.isDogfood ? "yes" : "no"}`,
+      );
+    }
     return credential;
   } catch (error) {
     const descriptor = describeProvider(opts.provider);

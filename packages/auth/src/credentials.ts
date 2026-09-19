@@ -18,6 +18,7 @@ import { readFile } from "node:fs/promises";
 import { ClaudeCodeCredential, CodexCredential, decodeJwtClaims, type CodexIdentity } from "@flyvendedk799/ai-auth";
 import type { KeySource, ProviderId } from "@flyvendedk799/ai-auth";
 import { refreshGeminiToken, type GeminiOAuthIdentity } from "./geminiOAuth.js";
+import { CodeAssistSetupError, ensureCodeAssistProject } from "./codeAssist.js";
 import { describeProvider } from "./providers.js";
 import { getAuthRuntime, type AuthRuntime } from "./runtime.js";
 
@@ -80,6 +81,8 @@ export type ResolveOptions = {
   inlineKey?: string | undefined;
   runtime?: AuthRuntime;
   env?: NodeJS.ProcessEnv;
+  /** Test seam for Code Assist onboarding / token refresh. */
+  fetchImpl?: typeof fetch;
 };
 
 export async function resolveProviderCredential(
@@ -178,12 +181,22 @@ async function resolveGeminiSubscription(
   if (options.accountId) {
     const status = await runtime.geminiAccounts.status(options.accountId);
     if (status.connected) {
+      const accessToken = await runtime.geminiAccounts.token(options.accountId);
+      const projectId = await resolveManagedProject({
+        accessToken,
+        isDogfood: status.isDogfood,
+        projectId: status.projectId,
+        options,
+        persist: async (id) => {
+          await runtime.geminiAccounts.setProjectId(options.accountId!, id);
+        },
+      });
       return {
         provider: "gemini-cli",
         wire: "gemini",
         kind: "subscription",
-        accessToken: await runtime.geminiAccounts.token(options.accountId),
-        projectId: status.projectId,
+        accessToken,
+        projectId,
         plan: status.email,
         isDogfood: status.isDogfood,
         source: "account",
@@ -199,12 +212,19 @@ async function resolveGeminiSubscription(
     const local = await localGemini.status();
     if (local.connected) {
       const env = options.env ?? process.env;
+      const accessToken = await localGemini.token();
+      const projectId = await resolveManagedProject({
+        accessToken,
+        isDogfood: undefined,
+        projectId: env.GEMINI_PROJECT_ID?.trim() || null,
+        options,
+      });
       return {
         provider: "gemini-cli",
         wire: "gemini",
         kind: "subscription",
-        accessToken: await localGemini.token(),
-        projectId: env.GEMINI_PROJECT_ID?.trim() || null,
+        accessToken,
+        projectId,
         plan: local.email,
         source: "local-cli",
       };
@@ -215,6 +235,36 @@ async function resolveGeminiSubscription(
     "No Gemini subscription is connected. Sign in from the provider panel, or pick the Gemini API key provider instead.",
     "gemini-cli",
   );
+}
+
+/**
+ * Ask Cloud Code for the managed project id `agy` would discover via loadCodeAssist/onboardUser.
+ * Without it, flagship models often answer #3501 even with a valid OAuth token.
+ */
+async function resolveManagedProject(input: {
+  accessToken: string;
+  isDogfood?: boolean;
+  projectId: string | null;
+  options: ResolveOptions;
+  persist?: (projectId: string) => Promise<void>;
+}): Promise<string> {
+  try {
+    const resolved = await ensureCodeAssistProject({
+      accessToken: input.accessToken,
+      isDogfood: input.isDogfood,
+      projectId: input.projectId,
+      ...(input.options.fetchImpl ? { fetchImpl: input.options.fetchImpl } : {}),
+    });
+    if (input.persist && resolved !== input.projectId) {
+      await input.persist(resolved);
+    }
+    return resolved;
+  } catch (error) {
+    if (error instanceof CodeAssistSetupError) {
+      throw new CredentialError(error.message, "gemini-cli");
+    }
+    throw error;
+  }
 }
 
 async function resolveApiKey(

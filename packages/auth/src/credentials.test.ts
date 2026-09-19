@@ -145,6 +145,19 @@ describe("gemini subscription resolution", () => {
     email: "person@gmail.com",
   };
 
+  /** loadCodeAssist answers with a managed project — what `agy` discovers without asking. */
+  function codeAssistFetch(project = "managed-from-load") {
+    return (async (_input: any, _init: any) => {
+      return new Response(
+        JSON.stringify({
+          currentTier: { id: "free-tier" },
+          cloudaicompanionProject: project,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+  }
+
   it("uses the account's own connected subscription", async () => {
     const runtime = await runtimeIn();
     await runtime.geminiAccounts.save("account-1", identity);
@@ -153,13 +166,14 @@ describe("gemini subscription resolution", () => {
       provider: "gemini-cli",
       accountId: "account-1",
       runtime,
+      fetchImpl: codeAssistFetch(),
     });
     expect(credential).toMatchObject({
       kind: "subscription",
       accessToken: "ya29-live",
       plan: "person@gmail.com",
       source: "account",
-      projectId: null,
+      projectId: "managed-from-load",
     });
   });
 
@@ -171,6 +185,10 @@ describe("gemini subscription resolution", () => {
       provider: "gemini-cli",
       accountId: "account-1",
       runtime,
+      // Would fail if contacted — stored project must short-circuit.
+      fetchImpl: (async () => {
+        throw new Error("network should not be called");
+      }) as unknown as typeof fetch,
     });
     expect(credential).toMatchObject({
       kind: "subscription",
@@ -179,12 +197,34 @@ describe("gemini subscription resolution", () => {
     });
   });
 
+  it("persists a managed project discovered via loadCodeAssist", async () => {
+    const runtime = await runtimeIn();
+    await runtime.geminiAccounts.save("account-1", { ...identity, isDogfood: true });
+
+    await resolveProviderCredential({
+      provider: "gemini-cli",
+      accountId: "account-1",
+      runtime,
+      fetchImpl: codeAssistFetch("dogfood-managed-99"),
+    });
+
+    expect(await runtime.geminiAccounts.status("account-1")).toMatchObject({
+      projectId: "dogfood-managed-99",
+      isDogfood: true,
+    });
+  });
+
   it("does not hand one account's subscription to another", async () => {
     const runtime = await runtimeIn();
     await runtime.geminiAccounts.save("account-1", identity);
 
     await expect(
-      resolveProviderCredential({ provider: "gemini-cli", accountId: "account-2", runtime }),
+      resolveProviderCredential({
+        provider: "gemini-cli",
+        accountId: "account-2",
+        runtime,
+        fetchImpl: codeAssistFetch(),
+      }),
     ).rejects.toBeInstanceOf(CredentialError);
   });
 

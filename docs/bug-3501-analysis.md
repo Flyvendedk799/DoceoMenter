@@ -56,15 +56,15 @@ To fix this permanently, DoceoMenter must behave identically to the `agy` CLI by
 
 ## Fix applied (verified against current code)
 
-Verified: transport already forwarded `projectId` into `antigravityCliOptions` (which sets `x-goog-user-project` when present), and `GeminiAccountStore` already persisted `meta.projectId`.
+**What `agy` actually does (and DoceoMenter was skipping):** before `generateContent`, the CLI calls `loadCodeAssist` and, if needed, `onboardUser`. Google returns a *managed* `cloudaicompanionProject` — personal accounts never type a GCP project id. DoceoMenter now does the same during credential resolve, stores the managed id, and sends it as `x-goog-user-project` / `project` on Cloud Code requests.
 
-**Correction after user feedback:** personal / Google One `agy` logins do **not** need a GCP project id (Google’s own guidance: only org-managed Code Assist licenses set `GOOGLE_CLOUD_PROJECT`). Requiring a project id in the Web Connect flow was wrong for that path — Connect is code-only again; Project ID remains an optional field for org licenses.
-
-Likely #3501 drivers for personal Dogfood accounts remain endpoint/routing (`isDogfood` → `daily-cloudcode-pa`) and OAuth client/scopes — not a missing project id.
+**Also:**
+- Browser sessions never fall back to the VPS `agy` login.
+- Dogfood OAuth omits the unregistered `aicode` scope (`403 restricted_client`).
+- Connect UI does not require a typed GCP project id.
 
 Changes:
 
-1. **Web UI auth**: Connect matches `agy` (paste code only). Optional GCP project id field after connect, for org-managed licenses only.
-2. **OAuth scopes** (`geminiOAuth.ts`): request `aicode` on **Prod only**. The Dogfood OAuth client returns `403 restricted_client` if that scope is included.
-3. **Transport** (`transport.ts`): type `isDogfood` on the Gemini subscription wire credential; set `x-goog-user-project` only when a project id is stored; remove temporary `fetchAvailableModels` debug traffic.
-4. **Tests**: header present when `projectId` is set; header omitted when null; Dogfood OAuth omits `aicode`.
+1. **`ensureCodeAssistProject`** (`packages/auth/src/codeAssist.ts`): `loadCodeAssist` → optional `onboardUser` → managed project id.
+2. **`resolveGeminiSubscription`**: resolve + persist that project for UI credentials before the worker calls the model.
+3. **Transport**: still attaches `x-goog-user-project` when `projectId` is present (now usually filled by onboarding).
