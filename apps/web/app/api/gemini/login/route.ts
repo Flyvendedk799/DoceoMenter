@@ -28,6 +28,6 @@ export async function POST(request: Request) {
     );
   }
   const body = await request.json().catch(() => ({}));
-  const isDogfood = typeof body.isDogfood === "boolean" ? body.isDogfood : true;
+  const isDogfood = typeof body.isDogfood === "boolean" ? body.isDogfood : false;
   return withAccountCookie(NextResponse.json(startGeminiOAuthLogin(caller.accountId, isDogfood)), caller);
 }

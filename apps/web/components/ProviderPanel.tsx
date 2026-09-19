@@ -244,7 +244,7 @@ function GeminiConnect({
   onRefresh: () => void;
 }) {
   const [loginUrl, setLoginUrl] = useState<string | undefined>();
-  const [isDogfood, setIsDogfood] = useState(true);
+  const [isDogfood, setIsDogfood] = useState(false);
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | undefined>();
