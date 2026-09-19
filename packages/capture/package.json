@@ -10,7 +10,7 @@
     "assets"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && playwright install chromium",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },

@@ -133,8 +133,15 @@ export async function installDeps(opts: {
   log?: Logger;
   timeoutMs?: number;
 }): Promise<void> {
+  // Target repos almost always keep the bundler (vite/next/…) in
+  // `devDependencies`. ServerHoster runs DoceoMenter with NODE_ENV=production,
+  // and a bare `npm install` would skip those packages — then `npx vite` dies
+  // with ERR_MODULE_NOT_FOUND (havekongen run 13e01d6149d7).
   const env = {
     ...process.env,
+    NODE_ENV: "development",
+    npm_config_production: "false",
+    npm_config_include: "dev",
     npm_config_ignore_scripts: "true", // never run postinstall in v1
     npm_config_audit: "false",
     npm_config_fund: "false",
@@ -142,7 +149,12 @@ export async function installDeps(opts: {
     CI: "1",
   };
   const cmd = opts.pm === "pnpm" ? "pnpm" : opts.pm === "yarn" ? "yarn" : "npm";
-  const args = ["install", "--ignore-scripts"];
+  const args =
+    opts.pm === "npm"
+      ? ["install", "--ignore-scripts", "--include=dev"]
+      : opts.pm === "pnpm"
+        ? ["install", "--ignore-scripts", "--prod=false"]
+        : ["install", "--ignore-scripts"];
   opts.log?.(`[boot] ${cmd} ${args.join(" ")} (cwd=${opts.cwd})`);
   const child = execa(cmd, args, {
     cwd: opts.cwd,
