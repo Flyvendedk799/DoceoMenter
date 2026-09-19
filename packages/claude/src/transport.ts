@@ -472,7 +472,7 @@ function geminiTransport(options: TransportOptions): Transport {
             // DEBUG: Call fetchAvailableModels
             if (subscription) {
               const modelsRes = await doFetch(`${cli.baseURL}:fetchAvailableModels`, {
-                method: "GET",
+                method: "POST",
                 headers: cli.defaultHeaders ?? {},
               });
               const modelsText = await modelsRes.text();
