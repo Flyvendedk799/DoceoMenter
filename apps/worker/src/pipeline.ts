@@ -409,7 +409,12 @@ export async function runPipeline(opts: {
     ).length;
     if (okCount === 0) {
       await setStage("capture", { status: "failed", message: "no shots succeeded" });
-      console.error(`[capture] hard fail: no shots succeeded (${captureManifest.entries.length} planned)`);
+      const reasons = captureManifest.entries
+        .map((e) => `${e.shotId}:${e.status}${e.failureReason ? ` (${e.failureReason})` : ""}`)
+        .join("; ");
+      console.error(
+        `[capture] hard fail: no shots succeeded (${captureManifest.entries.length} planned) strategy=${strategy.kind} url=${liveAppUrl ?? "none"} :: ${reasons}`,
+      );
       throw new Error(
         "Media capture produced no successful shots — Playwright/media capture is required.",
       );

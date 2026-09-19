@@ -163,6 +163,52 @@ describe("detectStrategy", () => {
     expect(detectStrategy(a, true).kind).toBe("docker");
   });
 
+  it("detects nested Vite monorepo apps (CraftMagic apps/web) instead of static", () => {
+    const a = mk({
+      fileIndex: [
+        { path: "package.json", bytes: 100 },
+        { path: "package-lock.json", bytes: 100 },
+        { path: "apps/web/package.json", bytes: 100 },
+        { path: "apps/web/vite.config.ts", bytes: 100 },
+        { path: "apps/web/index.html", bytes: 100 },
+        { path: "apps/web/src/main.tsx", bytes: 100 },
+        { path: "apps/server/package.json", bytes: 100 },
+        { path: "packages/core/package.json", bytes: 50 },
+      ],
+      manifests: {
+        nodePkg: {
+          name: "craftmagic",
+          scripts: { dev: "npm run dev --workspace @craftmagic/server" },
+          deps: [],
+          devDeps: ["typescript"],
+        },
+      },
+      signals: {
+        hasFrontend: true,
+        hasBackend: true,
+        hasCLI: false,
+        hasElectron: false,
+        isLibrary: false,
+        framework: "vite",
+      },
+    });
+    const s = detectStrategy(a);
+    expect(s.kind).toBe("vite");
+    if (s.kind === "vite") expect(s.cwd).toBe("apps/web");
+  });
+
+  it("does not treat Vite SPA index.html as a static prototype dir", () => {
+    const a = mk({
+      fileIndex: [
+        { path: "apps/web/index.html", bytes: 100 },
+        { path: "apps/web/vite.config.ts", bytes: 50 },
+      ],
+      manifests: {},
+    });
+    const s = detectStrategy(a);
+    expect(s.kind).not.toBe("static");
+  });
+
   it("detects nested HTML prototype dirs as static (FM-Ecommerce style)", () => {
     const a = mk({
       fileIndex: [

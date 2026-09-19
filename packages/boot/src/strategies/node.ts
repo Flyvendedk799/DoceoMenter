@@ -1,5 +1,6 @@
 import type { BootStrategy } from "@doceomenter/shared";
-import { resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { join, resolve } from "node:path";
 import {
   installDeps,
   killProcess,
@@ -14,15 +15,18 @@ export async function bootNodeLike(
   repoDir: string,
   log: Logger,
 ): Promise<BootedApp> {
-  const cwd =
-    strategy.kind === "node-server" && strategy.cwd
-      ? resolve(repoDir, strategy.cwd)
-      : repoDir;
+  const nestedCwd =
+    "cwd" in strategy && strategy.cwd ? resolve(repoDir, strategy.cwd) : undefined;
+  const appCwd = nestedCwd ?? repoDir;
+  // npm/pnpm workspaces: install at the repo root so workspace packages resolve,
+  // then run the bundler from the app directory (CraftMagic apps/web).
+  const installCwd =
+    nestedCwd && existsSync(join(repoDir, "package.json")) ? repoDir : appCwd;
 
   if ("pkgManager" in strategy) {
-    await installDeps({ cwd, pm: strategy.pkgManager, log });
+    await installDeps({ cwd: installCwd, pm: strategy.pkgManager, log });
   } else {
-    await installDeps({ cwd, pm: "npm", log });
+    await installDeps({ cwd: installCwd, pm: "npm", log });
   }
 
   const port = strategy.port;
@@ -59,7 +63,7 @@ export async function bootNodeLike(
   }
 
   const env: NodeJS.ProcessEnv = { PORT: String(port), HOST: "127.0.0.1" };
-  const child = spawnDev({ cwd, cmd, args, env, log });
+  const child = spawnDev({ cwd: appCwd, cmd, args, env, log });
   const url = `http://127.0.0.1:${port}`;
   try {
     await pollUntilReady(url, 60_000, log);
