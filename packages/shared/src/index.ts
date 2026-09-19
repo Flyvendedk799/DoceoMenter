@@ -18,5 +18,6 @@ export {
   antigravityRequestHeaders,
   cloudCodeBaseUrl,
   cloudCodeDiscoveryHosts,
+  normalizeAntigravityModelId,
   sanitizePersonalCloudCodeProject,
 } from "./antigravityIdentity.js";

@@ -15,7 +15,7 @@ const envSchema = z.object({
   OPENAI_MODEL_PRIMARY: z.string().default("gpt-5"),
   OPENAI_MODEL_FALLBACK: z.string().default("gpt-5-mini"),
   GEMINI_API_KEY: z.string().optional(),
-  GEMINI_MODEL_PRIMARY: z.string().default("gemini-3.1-pro"),
+  GEMINI_MODEL_PRIMARY: z.string().default("gemini-3.1-pro-low"),
   GEMINI_MODEL_FALLBACK: z.string().default("gemini-3-flash"),
   MAX_REPO_MB: z.coerce.number().default(500),
   MAX_RUN_SECONDS: z.coerce.number().default(600),

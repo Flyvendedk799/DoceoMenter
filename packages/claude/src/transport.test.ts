@@ -495,6 +495,7 @@ describe("gemini wire", () => {
     expect(calls[0]!.url).toBe("https://daily-cloudcode-pa.googleapis.com/v1internal:generateContent");
     expect(calls[0]!.headers["x-goog-user-project"]).toBeUndefined();
     expect(calls[0]!.body.project).toBe("aicode-consumers");
+    expect(calls[0]!.body.model).toBe("gemini-3.1-pro-low");
   });
 
   it("explains aicode-consumers 403 as a personal Antigravity reconnect, not enterprise IAM", async () => {
@@ -567,7 +568,7 @@ describe("gemini wire", () => {
       message = (error as Error).message;
     }
     expect(calls).toHaveLength(1);
-    expect(calls[0]!.body.model).toBe("models/gemini-3.1-pro");
+    expect(calls[0]!.body.model).toBe("gemini-3.1-pro-low");
     expect(message).toMatch(/gemini-3\.1-pro/);
     expect(message).not.toMatch(/gemini-1\.5-flash|gemini-3-flash/);
   });

@@ -199,7 +199,7 @@ describe("gemini subscription resolution", () => {
       source: "account",
     });
   });
-  it("persists a managed project discovered via loadCodeAssist on Prod", async () => {
+  it("persists a managed project discovered via loadCodeAssist (daily-first like agy)", async () => {
     const runtime = await runtimeIn();
     await runtime.geminiAccounts.save("account-1", { ...identity, isDogfood: false });
 
@@ -212,7 +212,8 @@ describe("gemini subscription resolution", () => {
 
     expect(await runtime.geminiAccounts.status("account-1")).toMatchObject({
       projectId: "prod-managed-99",
-      isDogfood: false,
+      // Daily is tried first; a hit there flips isDogfood so generateContent stays on daily.
+      isDogfood: true,
     });
   });
 

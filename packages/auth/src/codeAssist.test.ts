@@ -82,7 +82,7 @@ describe("ensureCodeAssistProject", () => {
     expect(calls[0]!.url).toBe("https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist");
   });
 
-  it("uses cloudaicompanionProject from prod loadCodeAssist when already onboarded", async () => {
+  it("uses cloudaicompanionProject from daily loadCodeAssist when already onboarded", async () => {
     const { calls, impl } = recorder([
       {
         body: {
@@ -96,8 +96,8 @@ describe("ensureCodeAssistProject", () => {
       isDogfood: false,
       fetchImpl: impl,
     });
-    expect(discovered).toEqual({ projectId: "managed-gcp-abc", isDogfood: false });
-    expect(calls[0]!.url).toBe("https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist");
+    expect(discovered).toEqual({ projectId: "managed-gcp-abc", isDogfood: true });
+    expect(calls[0]!.url).toBe("https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist");
   });
 
   it("onboards with snake_case metadata when loadCodeAssist has no project", async () => {
@@ -121,10 +121,10 @@ describe("ensureCodeAssistProject", () => {
       fetchImpl: impl,
       sleep: async () => {},
     });
-    expect(discovered).toEqual({ projectId: "fresh-managed-xyz", isDogfood: false });
+    expect(discovered).toEqual({ projectId: "fresh-managed-xyz", isDogfood: true });
     expect(calls.map((c) => c.url)).toEqual([
-      "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist",
-      "https://cloudcode-pa.googleapis.com/v1internal:onboardUser",
+      "https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist",
+      "https://daily-cloudcode-pa.googleapis.com/v1internal:onboardUser",
     ]);
     expect(calls[1]!.body).toMatchObject({
       tier_id: "free-tier",
@@ -327,7 +327,7 @@ describe("ensureCodeAssistProject", () => {
         },
       },
       {
-        body: { cloudaicompanionProject: "from-daily" },
+        body: { cloudaicompanionProject: "from-prod" },
       },
     ]);
     const discovered = await ensureCodeAssistProject({
@@ -335,10 +335,10 @@ describe("ensureCodeAssistProject", () => {
       isDogfood: false,
       fetchImpl: impl,
     });
-    expect(discovered).toEqual({ projectId: "from-daily", isDogfood: true });
+    expect(discovered).toEqual({ projectId: "from-prod", isDogfood: false });
     expect(calls.map((c) => c.url)).toEqual([
-      "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist",
       "https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist",
+      "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist",
     ]);
     error.mockRestore();
   });
@@ -372,7 +372,7 @@ describe("ensureCodeAssistProject", () => {
 
   it("onboards a personal project when loadCodeAssist only returns aicode-consumers", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
-    // Prod returns the enterprise project with a free tier — must still call onboardUser.
+    // Daily returns the shared consumer project with a free tier — must still call onboardUser.
     const { calls, impl } = recorder([
       {
         body: {
@@ -393,10 +393,10 @@ describe("ensureCodeAssistProject", () => {
       fetchImpl: impl,
       sleep: async () => {},
     });
-    expect(discovered).toEqual({ projectId: "personal-managed-42", isDogfood: false });
+    expect(discovered).toEqual({ projectId: "personal-managed-42", isDogfood: true });
     expect(calls.map((c) => c.url)).toEqual([
-      "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist",
-      "https://cloudcode-pa.googleapis.com/v1internal:onboardUser",
+      "https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist",
+      "https://daily-cloudcode-pa.googleapis.com/v1internal:onboardUser",
     ]);
     expect(error).toHaveBeenCalled();
     error.mockRestore();

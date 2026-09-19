@@ -34,16 +34,16 @@ export const ANTIGRAVITY_ONBOARD_METADATA = {
 /**
  * Google's shared Cloud Code Assist consumer project.
  *
- * `loadCodeAssist` sometimes returns this for personal Google AI / Antigravity accounts.
- * Personal OAuth tokens have no IAM on it — attaching it as `x-goog-user-project` yields
- * `roles/serviceusage.serviceUsageConsumer` 403s. Enterprise/team setups may grant access;
- * DoceoMenter only supports personal Google AI subscriptions, so we never send it.
+ * Real `agy` (prod OAuth + `aicode` scope) gets this back from `loadCodeAssist` on daily and
+ * successfully calls generateContent with it in the **body only**. Putting it on
+ * `x-goog-user-project` yields `roles/serviceusage.serviceUsageConsumer` 403s for personal
+ * tokens. DoceoMenter mirrors that: body-only OK, never as the user-project header.
  */
 export const GOOGLE_ENTERPRISE_CLOUD_CODE_PROJECT = "aicode-consumers";
 
 /**
- * Keep only a project id a personal Antigravity login may bill against.
- * Drops empty values and Google's enterprise shared consumer project.
+ * Keep only a project id safe for `x-goog-user-project`.
+ * Drops empty values and Google's shared consumer project (header-unsafe for personal AI).
  */
 export function sanitizePersonalCloudCodeProject(
   projectId: string | null | undefined,
@@ -54,6 +54,17 @@ export function sanitizePersonalCloudCodeProject(
   return trimmed;
 }
 
+/**
+ * Cloud Code subscription model ids as `agy` sends them (bare, no `models/` prefix).
+ * UI/env often say `gemini-3.1-pro`, but daily only knows the tiered ids.
+ */
+export function normalizeAntigravityModelId(model: string): string {
+  const trimmed = model.trim();
+  const bare = trimmed.startsWith("models/") ? trimmed.slice("models/".length) : trimmed;
+  if (bare === "gemini-3.1-pro" || bare === "gemini-3-pro") return "gemini-3.1-pro-low";
+  return bare;
+}
+
 export const CLOUD_CODE_PROD_BASE_URL = "https://cloudcode-pa.googleapis.com/v1internal";
 export const CLOUD_CODE_DAILY_BASE_URL = "https://daily-cloudcode-pa.googleapis.com/v1internal";
 /** @deprecated Alias — G1 uses daily, not sandbox. */
@@ -61,19 +72,21 @@ export const CLOUD_CODE_DOGFOOD_BASE_URL = CLOUD_CODE_DAILY_BASE_URL;
 export const CLOUD_CODE_SANDBOX_BASE_URL =
   "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal";
 
-/** generateContent host: G1 / consumer → daily; enterprise-style → prod. */
+/** generateContent host: personal / G1 / body-only companion → daily; else prod. */
 export function cloudCodeBaseUrl(isDogfood?: boolean): string {
   return isDogfood ? CLOUD_CODE_DAILY_BASE_URL : CLOUD_CODE_PROD_BASE_URL;
 }
 
 /**
- * loadCodeAssist hosts in agy order. G1 tokens are tried on daily first; a TOS-ineligible
- * response is not fatal — the next host is tried.
+ * loadCodeAssist hosts. Personal Antigravity (`agy`) hits **daily first**; prod returns the
+ * same companion id but generateContent there false-429s for consumer tokens.
  */
 export function cloudCodeDiscoveryHosts(isDogfood?: boolean): readonly string[] {
+  // Always daily → prod (→ sandbox for explicit dogfood). Matching agy's post-login order
+  // matters more than the OAuth client flag.
   return isDogfood
     ? [CLOUD_CODE_DAILY_BASE_URL, CLOUD_CODE_PROD_BASE_URL, CLOUD_CODE_SANDBOX_BASE_URL]
-    : [CLOUD_CODE_PROD_BASE_URL, CLOUD_CODE_DAILY_BASE_URL];
+    : [CLOUD_CODE_DAILY_BASE_URL, CLOUD_CODE_PROD_BASE_URL];
 }
 
 /** Headers for Cloud Code generateContent. */
