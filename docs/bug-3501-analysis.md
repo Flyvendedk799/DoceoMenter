@@ -58,11 +58,9 @@ To fix this permanently, DoceoMenter must behave identically to the `agy` CLI by
 
 Verified: transport already forwarded `projectId` into `antigravityCliOptions` (which sets `x-goog-user-project` when present), and `GeminiAccountStore` already persisted `meta.projectId`. The gap was that the Web UI rarely collected a project id, so credentials stayed at `projectId: null`.
 
-Also found a leftover Dogfood OAuth bug in DoceoMenter’s own `geminiOAuth.ts`: `aicode` was still omitted for Dogfood even after `ai-auth` was fixed (DoceoMenter does not use `ai-auth`’s Antigravity OAuth for the web flow).
-
 Changes:
 
 1. **Web UI auth** (`ProviderPanel` + `/api/gemini/login/complete`): collect GCP project id during Connect (required to submit), store it with the credential via `completeGeminiOAuthLogin` → `geminiAccounts.save(..., projectId)`. Existing connected accounts without one still get a required-looking Project ID field.
-2. **OAuth scopes** (`geminiOAuth.ts`): always request `https://www.googleapis.com/auth/aicode` on Prod and Dogfood.
+2. **OAuth scopes** (`geminiOAuth.ts`): request `aicode` on **Prod only**. The Dogfood OAuth client returns `403 restricted_client` ("Unregistered scope(s): .../auth/aicode") if that scope is included — do not add it for Dogfood.
 3. **Transport** (`transport.ts`): type `isDogfood` on the Gemini subscription wire credential; rely on `antigravityCliOptions` for host + `x-goog-user-project`; remove temporary `fetchAvailableModels` debug traffic; log when a subscription call runs without a project id.
-4. **Tests**: header present when `projectId` is set; header omitted (and warning logged) when null; Dogfood still requests `aicode`; resolved credentials carry stored `projectId`.
+4. **Tests**: header present when `projectId` is set; header omitted (and warning logged) when null; Dogfood OAuth omits `aicode`; resolved credentials carry stored `projectId`.

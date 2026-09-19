@@ -20,10 +20,10 @@ describe("startGeminiLogin", () => {
     expect(url.searchParams.get("state")).toBe(started.state);
   });
 
-  it("also requests the aicode scope on Dogfood (required for flagship models)", () => {
+  it("omits aicode on Dogfood — that client rejects it with restricted_client", () => {
     const started = startGeminiLogin(true);
     const url = new URL(started.url);
-    expect(url.searchParams.get("scope")).toContain("https://www.googleapis.com/auth/aicode");
+    expect(url.searchParams.get("scope")).not.toContain("https://www.googleapis.com/auth/aicode");
     expect(url.searchParams.get("client_id")).toContain("884354919052");
   });
 

@@ -44,15 +44,15 @@ function getClientConfig(isDogfood: boolean) {
   return {
     clientId: isDogfood ? "884354919052-36trc1jjb3tguiac32ov6cod268c5blh.apps.googleusercontent.com" : "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com",
     clientSecret: isDogfood ? DOGFOOD_CLIENT_SECRET : PUBLIC_CLIENT_SECRET,
-    // `aicode` is required on both Prod and Dogfood — the CLI requests it on Dogfood too.
-    // Omitting it for Dogfood was a prior DoceoMenter bug that produced #3501 SUBSCRIPTION_REQUIRED.
+    // Prod registers `aicode`. The Dogfood client does not — requesting it there returns
+    // Google 403 `restricted_client` ("Unregistered scope(s): .../auth/aicode").
     scopes: [
       "https://www.googleapis.com/auth/cloud-platform",
       "https://www.googleapis.com/auth/userinfo.email",
       "https://www.googleapis.com/auth/userinfo.profile",
-      "https://www.googleapis.com/auth/aicode",
       "https://www.googleapis.com/auth/cclog",
       "https://www.googleapis.com/auth/experimentsandconfigs",
+      ...(isDogfood ? [] : ["https://www.googleapis.com/auth/aicode"]),
       "openid",
     ],
   };
