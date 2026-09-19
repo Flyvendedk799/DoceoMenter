@@ -1,11 +1,11 @@
 /**
- * Resolve the managed Cloud Code project the way Antigravity (`agy`) / Gemini CLI do.
+ * Resolve the managed Cloud Code project the way Antigravity (`agy`) does.
  *
- * Personal Google AI Pro/Ultra accounts are often **ineligible for free-tier** Code Assist and
- * only offered `standard-tier`, which requires the user to supply their own GCP project id
- * (same rule as `GOOGLE_CLOUD_PROJECT` in gemini-cli). Without that project, `onboardUser`
- * completes with no `cloudaicompanionProject` and `generateContent` answers #3501
- * SUBSCRIPTION_REQUIRED — even though Google AI Pro is active on the account.
+ * `agy` never asks the user to type a GCP project: after Google login it POSTs
+ * `loadCodeAssist` / `onboardUser` and uses the returned `cloudaicompanionProject`.
+ * DoceoMenter must do the same. An optional user-typed project is only an escape hatch
+ * (same idea as `GOOGLE_CLOUD_PROJECT`) when Google offers a tier that needs one and
+ * automatic provisioning returned nothing — not part of the normal Connect flow.
  *
  * Never puts Google's enterprise shared project `aicode-consumers` on `x-goog-user-project`
  * (personal tokens have no IAM there → 403). When load/onboard only name that project, we
@@ -88,14 +88,14 @@ function assistLog(log: ((line: string) => void) | undefined, line: string): voi
   }
 }
 
-/** Clear copy for the run UI / CredentialError when standard-tier needs a GCP project. */
+/** Clear copy when Google offers only a tier that needs a user GCP project and none is set. */
 export function gcpProjectRequiredMessage(): string {
   return (
-    "Google AI Pro/Ultra for Antigravity is on Code Assist standard-tier, which needs your own " +
-    "GCP project id (free-tier Code Assist is not available for this account). In the provider " +
-    "panel under Antigravity, set PERSONAL GCP PROJECT to a project you own, enable the Gemini " +
-    "for Google Cloud API on it, Save, then retry. Create a project at " +
-    "https://console.cloud.google.com/ if you do not have one yet."
+    "Antigravity normally discovers a managed Cloud Code project after Google login " +
+    "(same as `agy` — you should not need to type a project). Google only offered a Code Assist " +
+    "tier that expects a user-owned GCP project and did not return one. Disconnect and Connect " +
+    "Antigravity again (G1 / personal option). If that still fails, set PERSONAL GCP PROJECT in " +
+    "the panel to a project you own with Gemini for Google Cloud enabled, then retry."
   );
 }
 
@@ -162,8 +162,15 @@ export async function ensureCodeAssistProject(
   }
 
   if (needsUserProject && !userProject) {
-    assistLog(input.log, `[code-assist] ${gcpProjectRequiredMessage()}`);
-    throw new CodeAssistSetupError(gcpProjectRequiredMessage());
+    // Do not hard-fail here — `agy` never makes the user type a project. Soft-continue so
+    // generateContent can still try (body-only companion / no project) and surface a clear
+    // #3501 / 429 message that points at reconnect first, optional GCP field last.
+    assistLog(
+      input.log,
+      `[code-assist] Google offered a tier that expects a user GCP project but none is set; ` +
+        `continuing without one (agy never prompts for this — discovery should have provisioned). ` +
+        gcpProjectRequiredMessage(),
+    );
   }
 
   // User typed a GCP project but hosts did not return a managed id — bill against theirs

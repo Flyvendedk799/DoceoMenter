@@ -438,11 +438,9 @@ function GeminiConnect({
 }
 
 /**
- * Personal GCP project for Google AI Pro/Ultra (Code Assist standard-tier).
- *
- * Free-tier accounts get a managed project from Google. Pro/Ultra is often ineligible for
- * free-tier and must supply a project you own — same as `GOOGLE_CLOUD_PROJECT` in gemini-cli.
- * Never set Google's enterprise shared project `aicode-consumers`.
+ * Optional override — `agy` discovers a managed project after Google login; leave blank.
+ * Only set this if discovery logged that Google expects a user-owned GCP project and Connect
+ * alone still fails. Never set Google's enterprise shared project `aicode-consumers`.
  */
 function ProjectIdField({ status, onRefresh }: { status: ProviderStatus; onRefresh: () => void }) {
   const [value, setValue] = useState(status.projectId ?? "");
@@ -472,19 +470,14 @@ function ProjectIdField({ status, onRefresh }: { status: ProviderStatus; onRefre
 
   return (
     <label className="flex flex-col gap-2">
-      <span className="font-mono text-[11px] tracking-label text-fg-faint">PERSONAL GCP PROJECT</span>
+      <span className="font-mono text-[11px] tracking-label text-fg-faint">
+        PERSONAL GCP PROJECT{" "}
+        <span className="normal-case tracking-normal text-fg-faint">(optional escape hatch)</span>
+      </span>
       <p className="text-[12.5px] leading-[1.6] text-fg-muted">
-        Google AI Pro/Ultra usually needs a GCP project you own (enable Gemini for Google Cloud on
-        it). Free-tier Code Assist can leave this blank. Create one at{" "}
-        <a
-          href="https://console.cloud.google.com/"
-          target="_blank"
-          rel="noreferrer"
-          className="text-accent underline-offset-2 hover:underline"
-        >
-          console.cloud.google.com
-        </a>
-        .
+        Same as <span className="text-fg">agy</span>: Connect with Google is enough — DoceoMenter
+        should discover the managed project automatically. Only fill this in if a run says discovery
+        failed and asks for a project you own.
       </p>
       <div className="flex flex-wrap gap-2">
         <input
@@ -492,7 +485,7 @@ function ProjectIdField({ status, onRefresh }: { status: ProviderStatus; onRefre
           autoComplete="off"
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          placeholder="your-gcp-project-id"
+          placeholder="leave blank — like agy"
           className="dm-input h-11 min-w-0 flex-1 font-mono text-[13px]"
         />
         <button type="button" disabled={busy} onClick={() => void save()} className="dm-btn-secondary h-11 px-5 text-[13px]">

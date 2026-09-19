@@ -602,11 +602,11 @@ describe("gemini wire", () => {
     } catch (error) {
       message = (error as Error).message;
     }
-    expect(message).toMatch(/PERSONAL GCP PROJECT|no Cloud Code project|standard-tier/i);
+    expect(message).toMatch(/agy|discovers|Connect|no Cloud Code project/i);
     expect(message).not.toMatch(/Pick a lighter model/i);
   });
 
-  it("explains #3501 without a GCP project as standard-tier setup, not a wrong Google account", async () => {
+  it("explains #3501 without a GCP project as a discovery miss, not a wrong Google account", async () => {
     const { impl } = recorder([
       {
         status: 403,
@@ -643,7 +643,7 @@ describe("gemini wire", () => {
       message = (error as Error).message;
     }
     expect(message).toMatch(/#3501|SUBSCRIPTION_REQUIRED/i);
-    expect(message).toMatch(/PERSONAL GCP PROJECT|standard-tier|GCP project/i);
+    expect(message).toMatch(/agy|discovers|Connect/i);
     expect(message).not.toMatch(/Disconnect and Connect again with the Google account/i);
   });
 });
