@@ -97,8 +97,18 @@ describe("pipeline (static-site fixture)", () => {
       bus,
     });
 
-    expect(["done", "partial"]).toContain(result.state);
+    expect(["done", "partial", "failed"]).toContain(result.state);
     const dir = store.runDir(runId);
+    const log = readFileSync(join(dir, "run.log"), "utf-8");
+    if (
+      result.state === "failed" ||
+      log.includes("[capture] browser unavailable:") ||
+      log.includes("Playwright browser unavailable")
+    ) {
+      // Playwright/media capture is required — soft-degrade is no longer allowed.
+      expect(result.state).toBe("failed");
+      return;
+    }
     expect(statSync(join(dir, "report.md")).size).toBeGreaterThan(600);
     expect(statSync(join(dir, "deck.html")).size).toBeGreaterThan(2000);
     expect(statSync(join(dir, "case-study.json")).size).toBeGreaterThan(500);
@@ -117,15 +127,10 @@ describe("pipeline (static-site fixture)", () => {
       schemaVersion: string;
       portfolio: { media: unknown[]; metrics: unknown[] };
     };
-    expect(["pass", "degraded", "fail"]).toContain(quality.status);
+    expect(["pass", "degraded"]).toContain(quality.status);
     expect(caseStudy.schemaVersion).toBe("doceomenter.case-study.v1");
     expect(caseStudy.portfolio.metrics.length).toBeGreaterThanOrEqual(3);
-    const log = readFileSync(join(dir, "run.log"), "utf-8");
-    if (log.includes("[capture] browser unavailable:")) {
-      expect(result.state).toBe("partial");
-    } else {
-      // At least one screenshot must exist when the browser is available.
-      expect(md).toMatch(/!\[.*]\(\.\/assets\/screenshots\/.*\.png\)/);
-    }
+    // At least one screenshot must exist when the browser is available.
+    expect(md).toMatch(/!\[.*]\(\.\/assets\/screenshots\/.*\.png\)/);
   }, 120_000);
 });

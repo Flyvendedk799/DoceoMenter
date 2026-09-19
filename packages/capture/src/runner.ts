@@ -33,18 +33,16 @@ export async function runCapturePlan(
   const entries: CaptureManifestEntry[] = [];
   let handle: BrowserHandle;
   try {
-    handle = await launchBrowser();
+    handle = await launchBrowser(ctx.log);
   } catch (e) {
     const reason = (e as Error).message;
     ctx.log(`[capture] browser unavailable: ${reason}`);
-    return {
-      entries: plan.shots.map((shot) => ({
-        shotId: shot.id,
-        shot,
-        status: "failed",
-        failureReason: `browser unavailable: ${reason}`,
-      })),
-    };
+    // Media capture is required — do not soft-fail into empty screenshots.
+    console.error(`[capture] browser unavailable (hard fail): ${reason}`);
+    throw new Error(
+      `Playwright browser unavailable — media capture cannot continue: ${reason}`,
+      { cause: e },
+    );
   }
   try {
     for (const shot of plan.shots) {

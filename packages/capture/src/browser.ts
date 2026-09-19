@@ -1,5 +1,6 @@
 import { chromium, type Browser, type BrowserContext } from "playwright";
 import { DEFAULT_VIEWPORT, DEFAULT_DPR } from "@doceomenter/shared";
+import { ensureChromiumInstalled, isMissingBrowserError } from "./ensureChromium.js";
 
 export type BrowserHandle = {
   browser: Browser;
@@ -23,11 +24,26 @@ const ANIMATION_KILLER_CSS = `
 }
 `;
 
-export async function launchBrowser(): Promise<BrowserHandle> {
-  const browser = await chromium.launch({
+async function launchChromiumOnce(): Promise<Browser> {
+  return chromium.launch({
     headless: true,
     args: ["--disable-dev-shm-usage", "--no-sandbox", "--font-render-hinting=none"],
   });
+}
+
+export async function launchBrowser(
+  log: (line: string) => void = () => {},
+): Promise<BrowserHandle> {
+  let browser: Browser;
+  try {
+    browser = await launchChromiumOnce();
+  } catch (err) {
+    if (!isMissingBrowserError(err)) throw err;
+    log(`[capture] Playwright Chromium missing; installing then retrying once`);
+    console.error(`[capture] Playwright Chromium missing; installing then retrying once`);
+    await ensureChromiumInstalled(log);
+    browser = await launchChromiumOnce();
+  }
 
   const newContext = async (opts: ContextOpts = {}) => {
     const ctx = await browser.newContext({
@@ -84,8 +100,12 @@ export async function launchBrowser(): Promise<BrowserHandle> {
           route.abort();
           return;
         }
-        if (opts.blockNetwork === "third-party" && !allow.has(origin) &&
-            !origin.startsWith("http://127.0.0.1") && !origin.startsWith("http://localhost")) {
+        if (
+          opts.blockNetwork === "third-party" &&
+          !allow.has(origin) &&
+          !origin.startsWith("http://127.0.0.1") &&
+          !origin.startsWith("http://localhost")
+        ) {
           route.abort();
           return;
         }

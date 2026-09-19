@@ -236,8 +236,20 @@ export async function runPipeline(opts: {
         bootedKill = booted.kill;
         await setStage("boot", { status: "done", message: liveAppUrl });
       } catch (e) {
+        const needsLiveApp = capturePlan.shots.some(
+          (shot) => "target" in shot && shot.target === "live-app",
+        );
+        const message = (e as Error).message;
+        if (needsLiveApp) {
+          await setStage("boot", { status: "failed", message });
+          console.error(`[boot] hard fail (live-app shots planned): ${message}`);
+          throw new Error(
+            `Boot failed and the capture plan needs live-app media — cannot continue: ${message}`,
+            { cause: e },
+          );
+        }
         degraded = true;
-        await setStage("boot", { status: "degraded", message: (e as Error).message });
+        await setStage("boot", { status: "degraded", message });
       }
       // If the deadline fired while booting, tear down immediately and abort —
       // the timeout handler ran before bootedKill was assigned. (Outside the
@@ -258,13 +270,43 @@ export async function runPipeline(opts: {
       log: (l) => void bus.log(runId, l),
     });
     const okCount = captureManifest.entries.filter((e) => e.status === "ok").length;
+    const liveOk = captureManifest.entries.filter(
+      (e) =>
+        e.status === "ok" && "target" in e.shot && e.shot.target === "live-app",
+    ).length;
+    const plannedLive = capturePlan.shots.filter(
+      (shot) => "target" in shot && shot.target === "live-app",
+    ).length;
     if (okCount === 0) {
+      await setStage("capture", { status: "failed", message: "no shots succeeded" });
+      console.error(`[capture] hard fail: no shots succeeded (${captureManifest.entries.length} planned)`);
+      throw new Error(
+        "Media capture produced no successful shots — Playwright/media capture is required.",
+      );
+    }
+    if (plannedLive > 0 && liveOk === 0) {
+      await setStage("capture", {
+        status: "failed",
+        message: `0/${plannedLive} live-app ok`,
+      });
+      console.error(
+        `[capture] hard fail: planned ${plannedLive} live-app shot(s) but none succeeded`,
+      );
+      throw new Error(
+        `Media capture failed for live-app shots (0/${plannedLive} ok) — Playwright capture is required.`,
+      );
+    }
+    if (okCount < captureManifest.entries.length) {
       degraded = true;
-      await setStage("capture", { status: "degraded", message: "no shots succeeded" });
-    } else if (okCount < captureManifest.entries.length) {
-      await setStage("capture", { status: "degraded", message: `${okCount}/${captureManifest.entries.length} ok` });
+      await setStage("capture", {
+        status: "degraded",
+        message: `${okCount}/${captureManifest.entries.length} ok`,
+      });
     } else {
-      await setStage("capture", { status: "done", message: `${okCount}/${captureManifest.entries.length} ok` });
+      await setStage("capture", {
+        status: "done",
+        message: `${okCount}/${captureManifest.entries.length} ok`,
+      });
     }
 
     // Tear down booted app early — captures done.
@@ -318,6 +360,12 @@ export async function runPipeline(opts: {
     await renderCaseStudyExport(renderInput, quality, caseStudyJsonPath);
     if (quality.status === "pass") {
       await setStage("quality-check", { status: "done", message: "pass" });
+    } else if (quality.status === "fail") {
+      // Missing live product media (or other hard gates) must fail the run.
+      await setStage("quality-check", { status: "failed", message: quality.status });
+      await bus.log(runId, `[quality] ${quality.summary}`, "error");
+      console.error(`[quality] hard fail: ${quality.summary}`);
+      throw new Error(`Quality gate failed: ${quality.summary}`);
     } else {
       degraded = true;
       await setStage("quality-check", { status: "degraded", message: quality.status });
