@@ -420,10 +420,10 @@ function GeminiConnect({
 }
 
 /**
- * Optional GCP project id for org-managed Code Assist licenses only.
+ * Optional override for the managed Code Assist project.
  *
- * Personal / Google One / free `agy` logins do not use one — same as the CLI. Leave blank
- * unless an admin assigned a project via the Gemini Code Assist admin console.
+ * Personal / Google One logins normally get a managed project automatically via
+ * `loadCodeAssist` (same as `agy`). Only set this if an admin assigned a project.
  */
 function ProjectIdField({ status, onRefresh }: { status: ProviderStatus; onRefresh: () => void }) {
   const [value, setValue] = useState(status.projectId ?? "");
@@ -456,7 +456,7 @@ function ProjectIdField({ status, onRefresh }: { status: ProviderStatus; onRefre
       <span className="font-mono text-[11px] tracking-label text-fg-faint">
         GCP PROJECT ID{" "}
         <span className="normal-case tracking-normal text-fg-faint">
-          (optional — only for org-managed licenses; personal agy logins leave this blank)
+          (optional override — normally filled automatically like `agy`)
         </span>
       </span>
       <div className="flex flex-wrap gap-2">
