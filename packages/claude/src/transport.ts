@@ -469,6 +469,16 @@ function geminiTransport(options: TransportOptions): Transport {
 
           const json = await withFallback(options, (m) => (model = m), async (m) => {
             const projectId = subscription ? (credential as { projectId: string | null }).projectId : null;
+            // DEBUG: Call fetchAvailableModels
+            if (subscription) {
+              const modelsRes = await doFetch(`${cli.baseURL}:fetchAvailableModels`, {
+                method: "GET",
+                headers: cli.defaultHeaders ?? {},
+              });
+              const modelsText = await modelsRes.text();
+              console.error('[MODELS DEBUG]', modelsText);
+            }
+
             const response = subscription
               ? await doFetch(`${cli.baseURL}:generateContent`, {
                   method: "POST",
