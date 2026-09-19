@@ -41,17 +41,17 @@ export type GeminiLoginFailure = { ok: false; status: number; error: string; mes
 
 export function startGeminiOAuthLogin(
   accountId: string,
-  email?: string,
+  isDogfood: boolean,
   now = Date.now(),
   pending: PendingGeminiLogins = pendingGeminiLogins,
 ): { url: string; expiresInSeconds: number } {
   sweep(pending, now);
-  const started = beginGeminiOAuth(email);
+  const started = beginGeminiOAuth(isDogfood, undefined);
   pending.set(accountId, {
     verifier: started.verifier,
     state: started.state,
     expiresAt: now + PENDING_TTL_MS,
-    isDogfood: email === "tobygopro@gmail.com",
+    isDogfood,
   });
   return { url: started.url, expiresInSeconds: Math.round(PENDING_TTL_MS / 1000) };
 }

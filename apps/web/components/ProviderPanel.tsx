@@ -244,7 +244,7 @@ function GeminiConnect({
   onRefresh: () => void;
 }) {
   const [loginUrl, setLoginUrl] = useState<string | undefined>();
-  const [email, setEmail] = useState("");
+  const [isDogfood, setIsDogfood] = useState(true);
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | undefined>();
@@ -257,7 +257,7 @@ function GeminiConnect({
         method: "POST", 
         credentials: "same-origin",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email: email.trim() }),
+        body: JSON.stringify({ isDogfood }),
       });
       const body = (await response.json().catch(() => ({}))) as { url?: string; message?: string };
       if (!response.ok || !body.url) throw new Error(body.message ?? `HTTP ${response.status}`);
@@ -332,17 +332,13 @@ function GeminiConnect({
                 <p className="text-[12.5px] leading-[1.6] text-fg-muted">
                   You can override this by connecting your own Google account below.
                 </p>
-                <input
-                  type="email"
-                  autoComplete="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Enter email to begin..."
-                  className="dm-input h-11 min-w-0 flex-1 font-mono text-[13px]"
-                />
+                <label className="flex items-center gap-2 text-[12.5px] text-fg-muted cursor-pointer">
+                  <input type="checkbox" checked={isDogfood} onChange={(e) => setIsDogfood(e.target.checked)} className="cursor-pointer" /> 
+                  Use G1 Dogfood Environment
+                </label>
                 <button 
                   type="button" 
-                  disabled={busy || !email.trim()} 
+                  disabled={busy} 
                   onClick={() => void start()} 
                   className="dm-btn h-11 px-5 text-[13px] self-start"
                 >
@@ -398,17 +394,13 @@ function GeminiConnect({
               by DoceoMenter).
               {!localCliEnabled ? "" : " A `agy` login on the machine hosting DoceoMenter works too, if one exists."}
             </p>
-            <input
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Enter email to begin..."
-              className="dm-input h-11 min-w-0 flex-1 font-mono text-[13px]"
-            />
+            <label className="flex items-center gap-2 text-[12.5px] text-fg-muted cursor-pointer">
+              <input type="checkbox" checked={isDogfood} onChange={(e) => setIsDogfood(e.target.checked)} className="cursor-pointer" /> 
+              Use G1 Dogfood Environment
+            </label>
             <button 
               type="button" 
-              disabled={busy || !email.trim()} 
+              disabled={busy} 
               onClick={() => void start()} 
               className="dm-btn h-11 px-5 text-[13px] self-start"
             >

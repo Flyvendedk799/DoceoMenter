@@ -3,25 +3,26 @@ import { GEMINI_OAUTH, GeminiLoginError, exchangeGeminiCode, refreshGeminiToken,
 
 describe("startGeminiLogin", () => {
   it("builds a PKCE authorization URL against Google, asking for a refresh token", () => {
-    const started = startGeminiLogin();
+    const started = startGeminiLogin(false);
     const url = new URL(started.url);
 
     expect(url.origin + url.pathname).toBe(GEMINI_OAUTH.authorizeUrl);
-    expect(url.searchParams.get("client_id")).toBe(expect.any(String));
+    expect(url.searchParams.get("client_id")).toEqual(expect.any(String));
+    expect(url.searchParams.get("response_type")).toBe("code");
     expect(url.searchParams.get("redirect_uri")).toBe(GEMINI_OAUTH.redirectUri);
+    expect(url.searchParams.get("scope")).toContain("https://www.googleapis.com/auth/cloud-platform");
+    expect(url.searchParams.get("scope")).toContain("https://www.googleapis.com/auth/aicode");
+
+    expect(url.searchParams.get("code_challenge")).toMatch(/^[a-zA-Z0-9_-]{43}$/);
     expect(url.searchParams.get("code_challenge_method")).toBe("S256");
     expect(url.searchParams.get("access_type")).toBe("offline");
     expect(url.searchParams.get("prompt")).toBe("consent");
-    // A SHA-256 hash of the verifier, not the verifier itself.
-    expect(url.searchParams.get("code_challenge")).not.toBe(started.verifier);
-    expect(url.searchParams.get("code_challenge")?.length).toBeGreaterThan(20);
-    expect(started.verifier.length).toBeGreaterThan(20);
-    expect(started.state.length).toBeGreaterThan(10);
+    expect(url.searchParams.get("state")).toBe(started.state);
   });
 
   it("never reuses a verifier or state across two starts", () => {
-    const a = startGeminiLogin();
-    const b = startGeminiLogin();
+    const a = startGeminiLogin(false);
+    const b = startGeminiLogin(false);
     expect(a.verifier).not.toBe(b.verifier);
     expect(a.state).not.toBe(b.state);
   });

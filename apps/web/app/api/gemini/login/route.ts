@@ -28,6 +28,6 @@ export async function POST(request: Request) {
     );
   }
   const body = await request.json().catch(() => ({}));
-  const email = typeof body.email === "string" ? body.email.trim() : undefined;
-  return withAccountCookie(NextResponse.json(startGeminiOAuthLogin(caller.accountId, email)), caller);
+  const isDogfood = typeof body.isDogfood === "boolean" ? body.isDogfood : true;
+  return withAccountCookie(NextResponse.json(startGeminiOAuthLogin(caller.accountId, isDogfood)), caller);
 }

@@ -68,8 +68,7 @@ export interface GeminiLoginStart {
   state: string;
 }
 
-export function startGeminiLogin(email?: string): GeminiLoginStart {
-  const isDogfood = email === "tobygopro@gmail.com";
+export function startGeminiLogin(isDogfood: boolean, email?: string): GeminiLoginStart {
   const config = getClientConfig(isDogfood);
   const verifier = randomBytes(32).toString("base64url");
   const challenge = createHash("sha256").update(verifier).digest("base64url");
@@ -110,6 +109,7 @@ export interface GeminiOAuthIdentity {
   /** Unix ms. */
   expiresAt: number;
   email: string | null;
+  isDogfood?: boolean;
 }
 
 interface TokenResponse {
@@ -191,6 +191,7 @@ export async function exchangeGeminiCode(input: {
     refreshToken: typeof refreshToken === "string" && refreshToken.length > 0 ? refreshToken : null,
     expiresAt: now() + expiresIn * 1000,
     email: emailFromIdToken(json?.id_token),
+    isDogfood: input.isDogfood,
   };
 }
 

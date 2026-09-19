@@ -90,6 +90,7 @@ export class GeminiAccountStore {
         email: identity.email,
         expiresAt: Math.round(identity.expiresAt),
         projectId: keptProjectId,
+        isDogfood: (identity.isDogfood ?? (existing?.meta.isDogfood === 1)) ? 1 : 0,
       },
     });
   }
@@ -169,7 +170,7 @@ export class GeminiAccountStore {
 
     const refreshed = await refreshGeminiToken(payload.refreshToken, {
       now: this.now,
-      isDogfood: record.meta.email === "tobygopro@gmail.com",
+      isDogfood: record.meta.isDogfood === 1,
       ...(this.options.fetchImpl ? { fetchImpl: this.options.fetchImpl } : {}),
     });
 
