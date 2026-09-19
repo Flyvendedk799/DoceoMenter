@@ -172,7 +172,6 @@ async function resolveGeminiSubscription(
   if (options.accountId) {
     const status = await runtime.geminiAccounts.status(options.accountId);
     if (status.connected) {
-      console.error(`[AUTH DIAGNOSTIC] Using Web UI account token for: ${status.email} (Source: account)`);
       return {
         provider: "gemini-cli",
         wire: "gemini",
@@ -180,7 +179,7 @@ async function resolveGeminiSubscription(
         accessToken: await runtime.geminiAccounts.token(options.accountId),
         projectId: status.projectId,
         plan: status.email,
-          isDogfood: status.isDogfood,
+        isDogfood: status.isDogfood,
         source: "account",
       };
     }
@@ -189,7 +188,6 @@ async function resolveGeminiSubscription(
   if (runtime.config.allowLocalCli) {
     const local = await localGemini.status();
     if (local.connected) {
-      console.error(`[AUTH DIAGNOSTIC] Using VPS machine login fallback for: ${local.email} (Source: machine login)`);
       const env = options.env ?? process.env;
       return {
         provider: "gemini-cli",

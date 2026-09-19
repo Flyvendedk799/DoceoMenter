@@ -246,6 +246,7 @@ function GeminiConnect({
   const [loginUrl, setLoginUrl] = useState<string | undefined>();
   const [isDogfood, setIsDogfood] = useState(false);
   const [code, setCode] = useState("");
+  const [projectId, setProjectId] = useState("");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | undefined>();
 
@@ -273,17 +274,22 @@ function GeminiConnect({
     setBusy(true);
     setNote(undefined);
     try {
+      const trimmedProject = projectId.trim();
       const response = await fetch("/api/gemini/login/complete", {
         method: "POST",
         credentials: "same-origin",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ code: code.trim() }),
+        body: JSON.stringify({
+          code: code.trim(),
+          ...(trimmedProject ? { projectId: trimmedProject } : {}),
+        }),
       });
       const body = (await response.json().catch(() => ({}))) as { message?: string };
       if (!response.ok) throw new Error(body.message ?? `HTTP ${response.status}`);
       onRefresh();
       setLoginUrl(undefined);
       setCode("");
+      setProjectId("");
     } catch (e) {
       setNote((e as Error).message);
     } finally {
@@ -311,11 +317,52 @@ function GeminiConnect({
         <button type="button" disabled={busy} onClick={() => void disconnect()} className="dm-btn-secondary h-10 px-4 text-[13px]">
           Disconnect
         </button>
-        <ProjectIdField status={status} onRefresh={onRefresh} />
+        <ProjectIdField status={status} onRefresh={onRefresh} required={!status.projectId} />
         {note && <p className="font-mono text-[11px] text-fg-faint">{note}</p>}
       </div>
     );
   }
+
+  const awaitingCode = (
+    <div className="space-y-2">
+      <p className="text-[12.5px] leading-[1.6] text-fg-muted">
+        Open this URL, approve, and paste back the code it shows. Also enter the Google Cloud
+        project id the CLI would ask for — without it, flagship models fail with #3501.
+      </p>
+      <a
+        href={loginUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="block break-all rounded-sm border border-line bg-ink-900 px-3 py-2 font-mono text-[11px] text-accent"
+      >
+        {loginUrl}
+      </a>
+      <input
+        type="text"
+        autoComplete="off"
+        value={code}
+        onChange={(e) => setCode(e.target.value)}
+        placeholder="4/0A..."
+        className="dm-input h-11 w-full font-mono text-[13px]"
+      />
+      <input
+        type="text"
+        autoComplete="off"
+        value={projectId}
+        onChange={(e) => setProjectId(e.target.value)}
+        placeholder="GCP project id (e.g. my-gcp-project)"
+        className="dm-input h-11 w-full font-mono text-[13px]"
+      />
+      <button
+        type="button"
+        disabled={busy || !code.trim() || !projectId.trim()}
+        onClick={() => void complete()}
+        className="dm-btn h-11 px-5 text-[13px]"
+      >
+        Connect
+      </button>
+    </div>
+  );
 
   if (status.source === "machine login") {
     return (
@@ -323,7 +370,9 @@ function GeminiConnect({
         <p className="dm-well rounded-sm px-3.5 py-3 text-[12.5px] leading-[1.65] text-fg-muted">
           Using the <span className="text-fg">agy</span> login already on the machine hosting
           DoceoMenter (signed in as {status.plan}). Nothing is stored here — the credential is
-          re-read each time, and the CLI keeps it current.
+          re-read each time, and the CLI keeps it current. Set{" "}
+          <span className="font-mono text-[12px] text-fg">GEMINI_PROJECT_ID</span> on the server
+          if flagship models need a GCP project.
         </p>
         
         <div className="space-y-2 pt-2 border-t border-line">
@@ -346,37 +395,7 @@ function GeminiConnect({
                 </button>
               </div>
             ) : (
-            <div className="space-y-2">
-              <p className="text-[12.5px] leading-[1.6] text-fg-muted">
-                Open this URL, approve, and paste back the code it shows:
-              </p>
-              <a
-                href={loginUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="block break-all rounded-sm border border-line bg-ink-900 px-3 py-2 font-mono text-[11px] text-accent"
-              >
-                {loginUrl}
-              </a>
-              <div className="flex flex-wrap gap-2">
-                <input
-                  type="text"
-                  autoComplete="off"
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                  placeholder="4/0A..."
-                  className="dm-input h-11 min-w-0 flex-1 font-mono text-[13px]"
-                />
-                <button
-                  type="button"
-                  disabled={busy || !code.trim()}
-                  onClick={() => void complete()}
-                  className="dm-btn h-11 px-5 text-[13px]"
-                >
-                  Submit
-                </button>
-              </div>
-            </div>
+            awaitingCode
           )}
         </div>
       </div>
@@ -408,37 +427,7 @@ function GeminiConnect({
             </button>
           </div>
         ) : (
-        <div className="space-y-2">
-          <p className="text-[12.5px] leading-[1.6] text-fg-muted">
-            Open this URL, approve, and paste back the code it shows:
-          </p>
-          <a
-            href={loginUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="block break-all rounded-sm border border-line bg-ink-900 px-3 py-2 font-mono text-[11px] text-accent"
-          >
-            {loginUrl}
-          </a>
-          <div className="flex flex-wrap gap-2">
-            <input
-              type="text"
-              autoComplete="off"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              placeholder="4/0A..."
-              className="dm-input h-11 min-w-0 flex-1 font-mono text-[13px]"
-            />
-            <button
-              type="button"
-              disabled={busy || code.trim().length === 0}
-              onClick={() => void complete()}
-              className="dm-btn h-11 px-5 text-[13px]"
-            >
-              Connect
-            </button>
-          </div>
-        </div>
+        awaitingCode
       )}
       {note && <p className="font-mono text-[11px] text-fg-faint">{note}</p>}
     </div>
@@ -450,9 +439,18 @@ function GeminiConnect({
  *
  * `loadCodeAssist` calls this `userDefinedCloudaicompanionProject` — nothing in the OAuth
  * token reveals it, so it is a value the account types in here rather than one DoceoMenter can
- * discover on its own.
+ * discover on its own. Flagship models (`gemini-3.1-pro`) return #3501 without
+ * `x-goog-user-project`, which is built from this value.
  */
-function ProjectIdField({ status, onRefresh }: { status: ProviderStatus; onRefresh: () => void }) {
+function ProjectIdField({
+  status,
+  onRefresh,
+  required = false,
+}: {
+  status: ProviderStatus;
+  onRefresh: () => void;
+  required?: boolean;
+}) {
   const [value, setValue] = useState(status.projectId ?? "");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | undefined>();
@@ -481,7 +479,18 @@ function ProjectIdField({ status, onRefresh }: { status: ProviderStatus; onRefre
   return (
     <label className="flex flex-col gap-2">
       <span className="font-mono text-[11px] tracking-label text-fg-faint">
-        GCP PROJECT ID <span className="normal-case tracking-normal text-fg-faint">(only if the license needs one)</span>
+        GCP PROJECT ID
+        {required ? (
+          <span className="normal-case tracking-normal text-fg-muted">
+            {" "}
+            — required for gemini-3.1-pro (same project the agy CLI asks for)
+          </span>
+        ) : (
+          <span className="normal-case tracking-normal text-fg-faint">
+            {" "}
+            (sent as x-goog-user-project on Cloud Code requests)
+          </span>
+        )}
       </span>
       <div className="flex flex-wrap gap-2">
         <input
@@ -492,7 +501,7 @@ function ProjectIdField({ status, onRefresh }: { status: ProviderStatus; onRefre
           placeholder="my-gcp-project"
           className="dm-input h-11 min-w-0 flex-1 font-mono text-[13px]"
         />
-        <button type="button" disabled={busy} onClick={() => void save()} className="dm-btn-secondary h-11 px-5 text-[13px]">
+        <button type="button" disabled={busy || (required && !value.trim())} onClick={() => void save()} className="dm-btn-secondary h-11 px-5 text-[13px]">
           Save
         </button>
       </div>

@@ -159,6 +159,23 @@ describe("gemini subscription resolution", () => {
       accessToken: "ya29-live",
       plan: "person@gmail.com",
       source: "account",
+      projectId: null,
+    });
+  });
+
+  it("carries a stored GCP project id through to the resolved credential", async () => {
+    const runtime = await runtimeIn();
+    await runtime.geminiAccounts.save("account-1", identity, "my-gcp-project");
+
+    const credential = await resolveProviderCredential({
+      provider: "gemini-cli",
+      accountId: "account-1",
+      runtime,
+    });
+    expect(credential).toMatchObject({
+      kind: "subscription",
+      projectId: "my-gcp-project",
+      source: "account",
     });
   });
 
