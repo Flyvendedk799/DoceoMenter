@@ -26,7 +26,7 @@ import {
   withClaudeCodeIdentity,
 } from "@flyvendedk799/ai-auth";
 import { describeProviderError, providerErrorFacts, type ProviderId } from "@flyvendedk799/ai-auth/registry";
-import { antigravityRequestHeaders } from "@doceomenter/shared";
+import { antigravityRequestHeaders, cloudCodeBaseUrl } from "@doceomenter/shared";
 
 export type Tool = Anthropic.Messages.Tool;
 export type SystemBlock = { type: "text"; text: string; cache_control?: { type: "ephemeral" } };
@@ -451,7 +451,7 @@ const GEMINI_REFUSAL_REASONS = new Set(["SAFETY", "RECITATION", "PROHIBITED_CONT
  * A subscription does not bill against the public `generativelanguage.googleapis.com`; it
  * routes to Google's internal Cloud Code Assist endpoint, wrapping the same request shape in
  * `{ model, project, request: { ... } }`. `antigravityCliOptions` picks Prod
- * (`cloudcode-pa.googleapis.com`) or Dogfood (`daily-cloudcode-pa.googleapis.com`) from
+ * (`cloudcode-pa.googleapis.com`) or Dogfood (`daily-cloudcode-pa.sandbox.googleapis.com`) from
  * `isDogfood` on the credential. The metered key speaks the ordinary, documented `v1beta`
  * endpoint instead, unaffected by any of this.
  */
@@ -466,14 +466,18 @@ function geminiTransport(options: TransportOptions): Transport {
     : null;
 
   const cli = geminiSub
-    ? antigravityCliOptions({
-        accessToken: geminiSub.accessToken,
-        projectId: geminiSub.projectId,
-        refreshToken: null,
-        expiresAt: 0,
-        email: null,
-        isDogfood: geminiSub.isDogfood ?? false,
-      })
+    ? antigravityCliOptions(
+        {
+          accessToken: geminiSub.accessToken,
+          projectId: geminiSub.projectId,
+          refreshToken: null,
+          expiresAt: 0,
+          email: null,
+          isDogfood: geminiSub.isDogfood ?? false,
+        },
+        // ai-auth still points Dogfood at the non-sandbox host; override to the host `agy` uses.
+        cloudCodeBaseUrl(geminiSub.isDogfood ?? false),
+      )
     : antigravityKeyOptions((credential as { key: string }).key);
 
   return {
@@ -510,6 +514,9 @@ function geminiTransport(options: TransportOptions): Transport {
                     model: `models/${m}`,
                     ...(projectId ? { project: projectId } : {}),
                     request: generateRequest,
+                    // Required by the Antigravity gateway — same fields `agy` sends.
+                    userAgent: "antigravity",
+                    requestId: `doceomenter-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
                   }),
                 })
               : await doFetch(`${cli.baseURL}/models/${m}:generateContent`, {

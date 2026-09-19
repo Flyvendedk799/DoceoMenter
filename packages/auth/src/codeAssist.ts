@@ -9,8 +9,7 @@
  * can still attempt `generateContent` — hard-blocking the run here was worse than #3501.
  */
 
-import { antigravityCliOptions } from "@flyvendedk799/ai-auth";
-import { ANTIGRAVITY_CLIENT_METADATA, antigravityRequestHeaders } from "@doceomenter/shared";
+import { ANTIGRAVITY_CLIENT_METADATA, antigravityRequestHeaders, cloudCodeBaseUrl } from "@doceomenter/shared";
 
 const FREE_TIER = "free-tier";
 const ONBOARD_POLL_MS = 2_000;
@@ -56,20 +55,7 @@ export async function ensureCodeAssistProject(
   const existing = input.projectId?.trim() || null;
   if (existing) return existing;
 
-  // Dogfood / G1: `agy` often never needs loadCodeAssist for a typed project. Calling it
-  // with the wrong client identity returns "Client does not support Google TOS" and blocks
-  // the run before generateContent — skip discovery and let generateContent proceed.
-  if (input.isDogfood) return null;
-
-  const wire = antigravityCliOptions({
-    accessToken: input.accessToken,
-    projectId: null,
-    refreshToken: null,
-    expiresAt: 0,
-    email: null,
-    isDogfood: false,
-  });
-  const baseURL = wire.baseURL ?? "https://cloudcode-pa.googleapis.com/v1internal";
+  const baseURL = cloudCodeBaseUrl(input.isDogfood);
   const doFetch = input.fetchImpl ?? fetch;
   const sleep = input.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
   const headers: Record<string, string> = {
