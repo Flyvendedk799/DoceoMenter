@@ -1,16 +1,38 @@
+import type { EffectiveCaptureSurface, ResolvedRunSpec } from "@doceomenter/shared";
+
 /**
- * When to abort because *browser* live-app Playwright capture failed.
+ * When to abort because live product capture failed.
  *
- * A missing liveAppUrl is not a Playwright failure — many real products are not
- * an HTML page (CLI/TUI, Electron, libraries with a terminal demo). Those shots
- * are skipped today, not "failed capture." Hard-fail only when we had a
- * browser URL and still got zero live-app successes (run c71f7cb4085c wrongly
- * treated ai-auth's library skip as a Playwright outage).
+ * - skip: never hard-fail on missing live media
+ * - required: hard-fail if zero live successes (any surface that was supposed to capture)
+ * - if-possible: hard-fail only when a browser URL was booted and Playwright still got 0/N
+ *   (CLI/Electron without a URL is skippable; Electron window capture is not ready yet)
  */
 export function shouldHardFailMissingLiveApp(opts: {
   plannedLive: number;
   liveOk: number;
   liveAppUrl: string | undefined;
+  liveMedia: ResolvedRunSpec["liveMedia"];
+  surface: EffectiveCaptureSurface;
 }): boolean {
-  return opts.plannedLive > 0 && opts.liveOk === 0 && Boolean(opts.liveAppUrl);
+  if (opts.liveMedia === "skip") return false;
+  if (opts.liveOk > 0) return false;
+  if (opts.liveMedia === "required") {
+    // Required live media with nothing captured — fail for surfaces we can attempt.
+    // "none" means the product has no live surface; do not fail.
+    if (opts.surface === "none") return false;
+    return opts.plannedLive > 0 || opts.surface === "cli" || opts.surface === "browser";
+  }
+  // if-possible: only treat as outage when browser was available
+  return opts.plannedLive > 0 && Boolean(opts.liveAppUrl) && opts.surface === "browser";
+}
+
+export function shouldAttemptCliLiveCapture(opts: {
+  liveMedia: ResolvedRunSpec["liveMedia"];
+  surface: EffectiveCaptureSurface;
+  liveAppUrl: string | undefined;
+}): boolean {
+  if (opts.liveMedia === "skip") return false;
+  if (opts.liveAppUrl) return false;
+  return opts.surface === "cli" || opts.surface === "electron";
 }

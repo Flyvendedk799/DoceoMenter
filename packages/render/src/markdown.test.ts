@@ -26,7 +26,7 @@ const baseInput: RenderInput = {
     manifests: { nodePkg: { name: "demo", scripts: { dev: "vite" }, deps: [], devDeps: ["vite"] } },
     entrypoints: ["src/main.tsx"],
     fileIndex: [],
-    signals: { hasFrontend: true, hasBackend: false, hasCLI: false, isLibrary: false, framework: "vite" },
+    signals: { hasFrontend: true, hasBackend: false, hasCLI: false, hasElectron: false, isLibrary: false, framework: "vite" },
   },
   content: {
     concept: {

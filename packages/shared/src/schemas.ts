@@ -61,6 +61,26 @@ export const RunSpecSchema = z.object({
   outputStyle: z.enum(["concise", "standard", "deep"]).optional(),
   includeVideo: z.boolean().optional(),
   bootApp: z.boolean().optional(),
+  /**
+   * How live product media is treated.
+   * - required: fail the run if no live capture succeeds
+   * - if-possible: capture when the surface supports it; skip otherwise
+   * - skip: never attempt live captures
+   */
+  liveMedia: z.enum(["required", "if-possible", "skip"]).optional(),
+  /** Override auto-detected product surface for live capture. */
+  captureSurface: z.enum(["auto", "browser", "electron", "cli", "none"]).optional(),
+  /**
+   * Who plans live shots.
+   * - auto: model chooses
+   * - guided: honor captureTargets (routes / commands / windows)
+   * - brief: honor free-text captureBrief
+   */
+  capturePlanMode: z.enum(["auto", "guided", "brief"]).optional(),
+  /** Routes, CLI commands, or Electron window hints — one intent per string. */
+  captureTargets: z.array(z.string().min(1).max(200)).max(20).optional(),
+  /** Free-text brief describing what live surfaces to show. */
+  captureBrief: z.string().min(1).max(2000).optional(),
   provider: AiProviderSchema.optional(),
   model: ModelIdSchema.optional(),
   apiKey: z.string().min(1).max(400).optional(),
@@ -72,13 +92,26 @@ export const RUN_SPEC_DEFAULTS = {
   outputStyle: "standard" as const,
   includeVideo: true,
   bootApp: true,
+  liveMedia: "if-possible" as const,
+  captureSurface: "auto" as const,
+  capturePlanMode: "auto" as const,
   provider: "anthropic" as const,
 };
 
 export type ResolvedRunSpec = Required<
-  Pick<RunSpec, "ref" | "outputStyle" | "includeVideo" | "bootApp" | "provider">
+  Pick<
+    RunSpec,
+    | "ref"
+    | "outputStyle"
+    | "includeVideo"
+    | "bootApp"
+    | "liveMedia"
+    | "captureSurface"
+    | "capturePlanMode"
+    | "provider"
+  >
 > &
-  Pick<RunSpec, "url" | "apiKey" | "model">;
+  Pick<RunSpec, "url" | "apiKey" | "model" | "captureTargets" | "captureBrief">;
 
 /**
  * A run id is exactly the 12 lowercase-hex chars produced by
@@ -109,10 +142,40 @@ export function resolveRunSpec(spec: RunSpec): ResolvedRunSpec {
     outputStyle: spec.outputStyle ?? RUN_SPEC_DEFAULTS.outputStyle,
     includeVideo: spec.includeVideo ?? RUN_SPEC_DEFAULTS.includeVideo,
     bootApp: spec.bootApp ?? RUN_SPEC_DEFAULTS.bootApp,
+    liveMedia: spec.liveMedia ?? RUN_SPEC_DEFAULTS.liveMedia,
+    captureSurface: spec.captureSurface ?? RUN_SPEC_DEFAULTS.captureSurface,
+    capturePlanMode: spec.capturePlanMode ?? RUN_SPEC_DEFAULTS.capturePlanMode,
     provider: spec.provider ?? RUN_SPEC_DEFAULTS.provider,
     model: spec.model,
     apiKey: spec.apiKey,
+    captureTargets: spec.captureTargets,
+    captureBrief: spec.captureBrief,
   };
+}
+
+/** Resolved live-capture surface after applying auto-detect + user override. */
+export type EffectiveCaptureSurface = "browser" | "electron" | "cli" | "none";
+
+export function resolveEffectiveCaptureSurface(opts: {
+  override: RunSpec["captureSurface"];
+  strategyKind: string;
+  hasFrontend: boolean;
+  hasCLI: boolean;
+  hasElectron: boolean;
+}): EffectiveCaptureSurface {
+  const override = opts.override ?? "auto";
+  if (override !== "auto") return override;
+  if (opts.hasElectron) return "electron";
+  if (
+    opts.hasFrontend ||
+    ["next", "vite", "cra", "astro", "static", "node-server", "python-web", "docker"].includes(
+      opts.strategyKind,
+    )
+  ) {
+    return "browser";
+  }
+  if (opts.hasCLI || opts.strategyKind === "cli") return "cli";
+  return "none";
 }
 
 export const InteractionSchema = z.union([

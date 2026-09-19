@@ -7,6 +7,7 @@ import {
   ShotSchema,
   isValidRunId,
   redactSpec,
+  resolveEffectiveCaptureSurface,
   resolveRunSpec,
 } from "./schemas.js";
 
@@ -308,6 +309,26 @@ describe("provider selection", () => {
     expect(resolved.model).toBeUndefined();
   });
 
+  it("defaults live capture to if-possible / auto surface / auto plan", () => {
+    const resolved = resolveRunSpec(RunSpecSchema.parse({ url: "https://github.com/owner/repo" }));
+    expect(resolved.liveMedia).toBe("if-possible");
+    expect(resolved.captureSurface).toBe("auto");
+    expect(resolved.capturePlanMode).toBe("auto");
+  });
+
+  it("accepts guided targets and a free-text brief", () => {
+    const spec = RunSpecSchema.parse({
+      url: "https://github.com/owner/repo",
+      liveMedia: "required",
+      captureSurface: "cli",
+      capturePlanMode: "guided",
+      captureTargets: ["node dist/cli.js --help", "--version"],
+      captureBrief: "Show the login paste flow",
+    });
+    expect(spec.captureTargets).toHaveLength(2);
+    expect(spec.captureSurface).toBe("cli");
+  });
+
   it("takes a model id but not a path or a shell fragment", () => {
     expect(
       RunSpecSchema.parse({ url: "https://github.com/owner/repo", model: "claude-opus-5" }).model,
@@ -317,5 +338,49 @@ describe("provider selection", () => {
         RunSpecSchema.safeParse({ url: "https://github.com/owner/repo", model }).success,
       ).toBe(false);
     }
+  });
+});
+
+describe("resolveEffectiveCaptureSurface", () => {
+  it("prefers electron, then browser, then cli", () => {
+    expect(
+      resolveEffectiveCaptureSurface({
+        override: "auto",
+        strategyKind: "library",
+        hasFrontend: false,
+        hasCLI: true,
+        hasElectron: true,
+      }),
+    ).toBe("electron");
+    expect(
+      resolveEffectiveCaptureSurface({
+        override: "auto",
+        strategyKind: "vite",
+        hasFrontend: true,
+        hasCLI: false,
+        hasElectron: false,
+      }),
+    ).toBe("browser");
+    expect(
+      resolveEffectiveCaptureSurface({
+        override: "auto",
+        strategyKind: "cli",
+        hasFrontend: false,
+        hasCLI: true,
+        hasElectron: false,
+      }),
+    ).toBe("cli");
+  });
+
+  it("honors an explicit override", () => {
+    expect(
+      resolveEffectiveCaptureSurface({
+        override: "none",
+        strategyKind: "vite",
+        hasFrontend: true,
+        hasCLI: false,
+        hasElectron: false,
+      }),
+    ).toBe("none");
   });
 });

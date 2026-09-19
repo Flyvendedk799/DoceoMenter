@@ -282,11 +282,21 @@ function computeSignals(
     !!m.pythonRequirements;
   const np = m.nodePkg as { bin?: unknown; main?: string; module?: string; exports?: unknown } | undefined;
   const hasCLI = !!np?.bin;
-  const isLibrary = !hasFrontendIndicator && !hasBackendIndicator &&
+  const hasElectron =
+    deps.has("electron") ||
+    deps.has("electron-builder") ||
+    deps.has("electron-forge") ||
+    paths.some((p) => /(^|\/)electron\.config\.(js|cjs|mjs|ts)$/.test(p)) ||
+    paths.some((p) => /(^|\/)forge\.config\.(js|cjs|mjs|ts)$/.test(p));
+  const isLibrary =
+    !hasFrontendIndicator &&
+    !hasBackendIndicator &&
+    !hasElectron &&
     !!(np?.main || np?.module || np?.exports);
 
   let framework: Signals["framework"] = "unknown";
-  if (deps.has("next")) framework = "next";
+  if (hasElectron) framework = "electron";
+  else if (deps.has("next")) framework = "next";
   else if (deps.has("astro")) framework = "astro";
   else if (deps.has("@sveltejs/kit")) framework = "svelte-kit";
   else if (deps.has("vite")) framework = "vite";
@@ -299,6 +309,7 @@ function computeSignals(
     hasFrontend: hasFrontendIndicator,
     hasBackend: hasBackendIndicator,
     hasCLI,
+    hasElectron,
     isLibrary,
     framework,
   };

@@ -33,6 +33,7 @@ export type Signals = {
   hasFrontend: boolean;
   hasBackend: boolean;
   hasCLI: boolean;
+  hasElectron: boolean;
   isLibrary: boolean;
   framework?:
     | "next"
@@ -44,6 +45,7 @@ export type Signals = {
     | "flask"
     | "django"
     | "express"
+    | "electron"
     | "static"
     | "unknown";
 };
@@ -69,6 +71,7 @@ export type BootStrategy =
   | { kind: "python-web"; cmd: string; port: number }
   | { kind: "static"; dir: string; port: number }
   | { kind: "docker"; composeService?: string; port: number }
+  | { kind: "electron" }
   | { kind: "cli" }
   | { kind: "library" }
   | { kind: "unknown" };
