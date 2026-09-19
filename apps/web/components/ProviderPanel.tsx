@@ -272,13 +272,13 @@ function GeminiConnect({
     setBusy(true);
     setNote(undefined);
     try {
-      // Always G1 / personal Google AI client — the prod Antigravity client does not expose
-      // gemini-3.1-pro for personal accounts (404 "does not know a model").
+      // Match real `agy`: prod Antigravity OAuth client + `aicode` scope. G1/dogfood was a
+      // wrong detour — with aicode + daily host, prod client serves gemini-3.1-pro-low.
       const response = await fetch("/api/gemini/login", {
         method: "POST",
         credentials: "same-origin",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ isDogfood: true }),
+        body: JSON.stringify({ isDogfood: false }),
       });
       const body = (await response.json().catch(() => ({}))) as { url?: string; message?: string };
       if (!response.ok || !body.url) throw new Error(body.message ?? `HTTP ${response.status}`);
@@ -386,8 +386,8 @@ function GeminiConnect({
           {!loginUrl ? (
             <div className="flex flex-col gap-2">
               <p className="text-[12.5px] leading-[1.6] text-fg-muted">
-                Signs in with the personal Google AI / G1 client (required for{" "}
-                <span className="text-fg">gemini-3.1-pro</span>).
+                Same Google login as <span className="text-fg">agy</span> (prod client +{" "}
+                <span className="text-fg">aicode</span> scope).
               </p>
               <button
                 type="button"

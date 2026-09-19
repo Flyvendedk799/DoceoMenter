@@ -29,6 +29,7 @@ import { describeProviderError, providerErrorFacts, type ProviderId } from "@fly
 import {
   antigravityRequestHeaders,
   cloudCodeBaseUrl,
+  normalizeAntigravityModelId,
   sanitizePersonalCloudCodeProject,
 } from "@doceomenter/shared";
 export type Tool = Anthropic.Messages.Tool;
@@ -594,7 +595,8 @@ function geminiTransport(options: TransportOptions): Transport {
                   // `antigravityCliOptions`, plus agy's short User-Agent.
                   headers: antigravityRequestHeaders(cli.defaultHeaders ?? {}),
                   body: JSON.stringify({
-                    model: `models/${m}`,
+                    // Bare id — `models/` prefix 404s on daily Cloud Code (verified vs agy).
+                    model: normalizeAntigravityModelId(m),
                     // Body may carry aicode-consumers when that is all Google offers; the
                     // header above will not, so we avoid the serviceUsageConsumer 403.
                     ...(bodyProjectId ? { project: bodyProjectId } : {}),

@@ -87,7 +87,7 @@ const DEFAULT_MODELS: Record<AiProvider, { primary: string; fallback: string }> 
   openai: { primary: "gpt-5", fallback: "gpt-5-mini" },
   codex: { primary: "gpt-5", fallback: "gpt-5-mini" },
   gemini: { primary: "gemini-3.1-pro", fallback: "gemini-3-flash" },
-  "gemini-cli": { primary: "gemini-3.1-pro", fallback: "gemini-3-flash" },
+  "gemini-cli": { primary: "gemini-3.1-pro-low", fallback: "gemini-3-flash" },
 };
 
 export function createClaudeClient(opts: ClaudeClientOptions = {}): ClaudeClient {

@@ -61,7 +61,8 @@ export const PROVIDERS: readonly ProviderDescriptor[] = [
       "Sign in with your personal Google AI account in the panel — same idea as Claude Code. Not for enterprise/team licenses.",
     wire: "gemini",
     kind: "subscription",
-    defaults: { primary: "gemini-3.1-pro", fallback: "gemini-3-flash" },
+    // Daily Cloud Code ids (agy fetchAvailableModels) — bare `gemini-3.1-pro` 404s.
+    defaults: { primary: "gemini-3.1-pro-low", fallback: "gemini-3-flash" },
   },
   {
     id: "gemini",

@@ -44,23 +44,25 @@ function getClientConfig(isDogfood: boolean) {
   return {
     clientId: isDogfood ? "884354919052-36trc1jjb3tguiac32ov6cod268c5blh.apps.googleusercontent.com" : "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com",
     clientSecret: isDogfood ? DOGFOOD_CLIENT_SECRET : PUBLIC_CLIENT_SECRET,
-    // Match Antigravity IDE / working community clients: never request `aicode`.
-    // That scope routes personal Google AI accounts onto Google's enterprise shared
-    // companion project `aicode-consumers`, which then 403s on x-goog-user-project and
-    // 429s when omitted — even with dashboard quota remaining.
+    // Match real `agy` 1.2.7: include `aicode`. Verified 2026-09-19 against flyvendee@gmail.com —
+    // without it, personal Google AI does not get a working consumer Cloud Code session; with it,
+    // daily generateContent succeeds (body may name aicode-consumers; never put that on
+    // x-goog-user-project).
     scopes: [
       "https://www.googleapis.com/auth/cloud-platform",
       "https://www.googleapis.com/auth/userinfo.email",
       "https://www.googleapis.com/auth/userinfo.profile",
       "https://www.googleapis.com/auth/cclog",
       "https://www.googleapis.com/auth/experimentsandconfigs",
+      "https://www.googleapis.com/auth/aicode",
       "openid",
     ],
   };
 }
 
 export const GEMINI_OAUTH = {
-  authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+  // Same path `agy` prints (not /v2/auth) — both work, but stay byte-identical to the proven CLI.
+  authorizeUrl: "https://accounts.google.com/o/oauth2/auth",
   tokenUrl: "https://oauth2.googleapis.com/token",
   redirectUri: "https://antigravity.google/oauth-callback",
 } as const;
