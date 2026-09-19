@@ -420,12 +420,12 @@ async function resolveCredential(opts: {
       // stderr: ServerHoster reliably captures console.error (same channel as [code-assist]
       // and the old AUTH DIAGNOSTIC). console.info was invisible in service logs.
       console.error(identityLine);
-      console.error(
-        `[auth] antigravity project=${credential.projectId ?? "(none)"} dogfood=${credential.isDogfood ? "yes" : "no"}`,
-      );
-      opts.log(
-        `[auth] antigravity project=${credential.projectId ?? "(none)"} dogfood=${credential.isDogfood ? "yes" : "no"}`,
-      );
+      const projectLog =
+        `[auth] antigravity project=${credential.projectId ?? "(none)"}` +
+        `${credential.bodyOnlyProjectId ? ` bodyProject=${credential.bodyOnlyProjectId}` : ""}` +
+        ` dogfood=${credential.isDogfood ? "yes" : "no"}`;
+      console.error(projectLog);
+      opts.log(projectLog);
     }
     if (credential.kind === "subscription" && credential.provider === "claude-code" && credential.plan) {
       opts.log(`[auth] Claude plan=${credential.plan} via=${credential.source}`);
