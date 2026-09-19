@@ -169,13 +169,13 @@ function fail(error: unknown, options: TransportOptions, model: string): never {
       subscriptionRequired &&
       noPersonalProject
     ) {
-      // Pro/Ultra is often standard-tier only: Google AI Pro is active, but Code Assist still
-      // needs a user-owned GCP project. Reconnect alone does not fix #3501 without that project.
+      // #3501 without a managed project: agy would have provisioned one after login. Point at
+      // reconnect first; optional GCP field only as last resort (not the normal path).
       described =
-        `Google returned #3501 SUBSCRIPTION_REQUIRED for Antigravity \`${model}\`. A Google AI Pro/Ultra ` +
-        `subscription is not enough by itself — Code Assist standard-tier needs a GCP project you own. ` +
-        `In the provider panel under Antigravity, set PERSONAL GCP PROJECT, enable Gemini for Google ` +
-        `Cloud on that project, Save, then retry.${detail}`;
+        `Google returned #3501 SUBSCRIPTION_REQUIRED for Antigravity \`${model}\` with no managed ` +
+        `Cloud Code project. \`agy\` never asks you to type a GCP project — it discovers one after ` +
+        `Google login. Disconnect and Connect Antigravity again (G1 / personal option). If the run ` +
+        `log still shows no project after Connect, set PERSONAL GCP PROJECT as a last-resort escape hatch.${detail}`;
     } else if ((facts.status === 401 || facts.status === 403) && options.credential.source === "account") {
       described =
         `Google rejected the Antigravity account connected${at || " in the provider panel"} for \`${model}\`. ` +
@@ -187,8 +187,8 @@ function fail(error: unknown, options: TransportOptions, model: string): never {
     } else if (exhausted && noPersonalProject && !bodyOnly) {
       described =
         `Google returned RESOURCE_EXHAUSTED for Antigravity \`${model}\`, but DoceoMenter has no Cloud Code ` +
-        `project for this login. Google AI Pro/Ultra often needs a PERSONAL GCP PROJECT in the Antigravity ` +
-        `provider panel (standard-tier). Set a project you own, Save, then retry.${detail}`;
+        `project for this login (agy discovers one automatically after Google login). Disconnect and ` +
+        `Connect Antigravity again, then retry.${detail}`;
     }
   }
 
