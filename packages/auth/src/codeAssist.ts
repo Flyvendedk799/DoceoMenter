@@ -1,15 +1,21 @@
 /**
- * Resolve the managed Cloud Code Assist project the way `agy` / Gemini CLI does.
+ * Resolve the managed Cloud Code project the way `agy` does.
  *
- * Personal and Google One accounts do not type a GCP project id. The CLI calls
- * `loadCodeAssist`, and if needed `onboardUser`, then uses the
- * `cloudaicompanionProject` Google returns — a managed project, not one the user owns.
+ * Personal / Google One accounts never type a GCP project id. `agy` POSTs `loadCodeAssist`
+ * with `{ metadata: { ideType: "ANTIGRAVITY" } }` and, if needed, `onboardUser` with snake_case
+ * metadata, then uses `cloudaicompanionProject`.
  *
- * Returns null when Google refuses discovery (e.g. client TOS eligibility) so the caller
- * can still attempt `generateContent` — hard-blocking the run here was worse than #3501.
+ * Gemini CLI's Code Assist metadata (`pluginType: GEMINI`, `platform: PLATFORM_UNSPECIFIED`)
+ * is a different product. Google answers "Client does not support Google TOS" for that shape,
+ * which is not a missing license on the account.
  */
 
-import { ANTIGRAVITY_CLIENT_METADATA, antigravityRequestHeaders, cloudCodeBaseUrl } from "@doceomenter/shared";
+import {
+  ANTIGRAVITY_LOAD_METADATA,
+  ANTIGRAVITY_ONBOARD_METADATA,
+  antigravityLoadHeaders,
+  cloudCodeDiscoveryHosts,
+} from "@doceomenter/shared";
 
 const FREE_TIER = "free-tier";
 const ONBOARD_POLL_MS = 2_000;
@@ -35,78 +41,92 @@ export class CodeAssistSetupError extends Error {
 type LoadCodeAssistResponse = {
   currentTier?: { id?: string; name?: string } | null;
   allowedTiers?: Array<{ id?: string; name?: string; isDefault?: boolean }> | null;
-  cloudaicompanionProject?: string | null;
-  ineligibleTiers?: Array<{ reasonMessage?: string; reasonCode?: string }> | null;
+  cloudaicompanionProject?: string | { id?: string } | null;
+  paidTier?: { id?: string } | null;
+  ineligibleTiers?: Array<{ reasonMessage?: string; reasonCode?: string; tierId?: string }> | null;
 };
 
 type OnboardUserResponse = {
   name?: string;
   done?: boolean;
-  response?: { cloudaicompanionProject?: { id?: string; name?: string } };
+  response?: { cloudaicompanionProject?: { id?: string; name?: string } | string };
 };
 
-/**
- * Returns a project id suitable for `x-goog-user-project` / `generateContent.project`,
- * or null when discovery is refused / unavailable.
- */
 export async function ensureCodeAssistProject(
   input: EnsureCodeAssistProjectInput,
 ): Promise<string | null> {
   const existing = input.projectId?.trim() || null;
   if (existing) return existing;
 
-  const baseURL = cloudCodeBaseUrl(input.isDogfood);
   const doFetch = input.fetchImpl ?? fetch;
   const sleep = input.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
   const headers: Record<string, string> = {
     Authorization: `Bearer ${input.accessToken}`,
-    ...antigravityRequestHeaders(),
+    ...antigravityLoadHeaders(),
   };
+
+  for (const baseURL of cloudCodeDiscoveryHosts(input.isDogfood)) {
+    const projectId = await discoverOnHost({ baseURL, headers, doFetch, sleep });
+    if (projectId) return projectId;
+  }
+
+  console.error("[code-assist] no managed project from any Cloud Code host; continuing without one");
+  return null;
+}
+
+async function discoverOnHost(input: {
+  baseURL: string;
+  headers: Record<string, string>;
+  doFetch: typeof fetch;
+  sleep: (ms: number) => Promise<void>;
+}): Promise<string | null> {
+  const { baseURL, headers, doFetch, sleep } = input;
 
   let load: LoadCodeAssistResponse;
   try {
     load = await postJson<LoadCodeAssistResponse>(doFetch, `${baseURL}:loadCodeAssist`, headers, {
-      metadata: ANTIGRAVITY_CLIENT_METADATA,
+      metadata: ANTIGRAVITY_LOAD_METADATA,
     });
   } catch (error) {
-    // Soft-fail: still allow generateContent; the worker will surface #3501 if that fails too.
-    console.error(`[code-assist] loadCodeAssist failed: ${(error as Error).message}`);
+    console.error(`[code-assist] loadCodeAssist ${baseURL}: ${(error as Error).message}`);
     return null;
   }
 
-  if (typeof load.cloudaicompanionProject === "string" && load.cloudaicompanionProject.trim()) {
-    return load.cloudaicompanionProject.trim();
-  }
+  const fromLoad = readProjectId(load.cloudaicompanionProject);
+  if (fromLoad) return fromLoad;
 
-  if (load.currentTier) {
-    console.error(
-      "[code-assist] onboarded account returned no managed project; continuing without one",
-    );
-    return null;
-  }
-
-  if (load.ineligibleTiers?.length) {
-    const reasons = load.ineligibleTiers
+  const canOnboard = Boolean(
+    load.currentTier ||
+      load.paidTier ||
+      (load.allowedTiers && load.allowedTiers.length > 0),
+  );
+  // ineligibleTiers is often present *alongside* a usable paid/default tier. Only skip this
+  // host when Google offered nothing we can onboard.
+  if (!canOnboard) {
+    const reasons = (load.ineligibleTiers ?? [])
       .map((t) => t.reasonMessage)
       .filter((m): m is string => typeof m === "string" && m.length > 0);
-    const joined = reasons.join("; ");
-    // TOS / "individuals" eligibility is a client-identity refusal, not a missing license on
-    // the Google account. Do not hard-fail the run — generateContent may still work as `agy` does.
-    console.error(`[code-assist] loadCodeAssist ineligible: ${joined || "unknown"}`);
+    if (reasons.length) {
+      console.error(`[code-assist] loadCodeAssist ${baseURL} ineligible: ${reasons.join("; ")}`);
+    }
     return null;
   }
 
-  const tier = (load.allowedTiers ?? []).find((t) => t.isDefault) ?? load.allowedTiers?.[0];
-  const tierId = tier?.id ?? FREE_TIER;
+  const tierId =
+    (load.allowedTiers ?? []).find((t) => t.isDefault)?.id ??
+    load.allowedTiers?.[0]?.id ??
+    load.currentTier?.id ??
+    load.paidTier?.id ??
+    FREE_TIER;
 
   let lro: OnboardUserResponse;
   try {
     lro = await postJson<OnboardUserResponse>(doFetch, `${baseURL}:onboardUser`, headers, {
-      tierId,
-      metadata: ANTIGRAVITY_CLIENT_METADATA,
+      tier_id: tierId,
+      metadata: ANTIGRAVITY_ONBOARD_METADATA,
     });
   } catch (error) {
-    console.error(`[code-assist] onboardUser failed: ${(error as Error).message}`);
+    console.error(`[code-assist] onboardUser ${baseURL}: ${(error as Error).message}`);
     return null;
   }
 
@@ -117,12 +137,21 @@ export async function ensureCodeAssistProject(
     try {
       lro = await getJson<OnboardUserResponse>(doFetch, `${baseURL}/${lro.name}`, headers);
     } catch (error) {
-      console.error(`[code-assist] onboard poll failed: ${(error as Error).message}`);
+      console.error(`[code-assist] onboard poll ${baseURL}: ${(error as Error).message}`);
       return null;
     }
   }
 
-  return lro.response?.cloudaicompanionProject?.id?.trim() || null;
+  return readProjectId(lro.response?.cloudaicompanionProject);
+}
+
+function readProjectId(value: unknown): string | null {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (value && typeof value === "object" && "id" in value) {
+    const id = (value as { id?: unknown }).id;
+    if (typeof id === "string" && id.trim()) return id.trim();
+  }
+  return null;
 }
 
 async function postJson<T>(

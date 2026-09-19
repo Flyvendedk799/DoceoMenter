@@ -451,7 +451,7 @@ const GEMINI_REFUSAL_REASONS = new Set(["SAFETY", "RECITATION", "PROHIBITED_CONT
  * A subscription does not bill against the public `generativelanguage.googleapis.com`; it
  * routes to Google's internal Cloud Code Assist endpoint, wrapping the same request shape in
  * `{ model, project, request: { ... } }`. `antigravityCliOptions` picks Prod
- * (`cloudcode-pa.googleapis.com`) or Dogfood (`daily-cloudcode-pa.sandbox.googleapis.com`) from
+ * (`cloudcode-pa.googleapis.com`) or G1/consumer (`daily-cloudcode-pa.googleapis.com`) from
  * `isDogfood` on the credential. The metered key speaks the ordinary, documented `v1beta`
  * endpoint instead, unaffected by any of this.
  */
@@ -475,7 +475,7 @@ function geminiTransport(options: TransportOptions): Transport {
           email: null,
           isDogfood: geminiSub.isDogfood ?? false,
         },
-        // ai-auth still points Dogfood at the non-sandbox host; override to the host `agy` uses.
+        // ai-auth's Dogfood URL has drifted; pin to the host `agy` uses for this credential.
         cloudCodeBaseUrl(geminiSub.isDogfood ?? false),
       )
     : antigravityKeyOptions((credential as { key: string }).key);
@@ -506,9 +506,9 @@ function geminiTransport(options: TransportOptions): Transport {
             const response = geminiSub
               ? await doFetch(`${cli.baseURL}:generateContent`, {
                   method: "POST",
-                  // Merge Antigravity identity headers on top of `antigravityCliOptions`
-                  // (Authorization / Content-Type / optional x-goog-user-project). Without
-                  // User-Agent + Client-Metadata Google answers "Client does not support Google TOS".
+                  // Authorization + x-goog-user-project from `antigravityCliOptions`, plus
+                  // agy's short User-Agent. Do not send Gemini-CLI Client-Metadata — that
+                  // path is "Code Assist for individuals" and returns TOS / #3501.
                   headers: antigravityRequestHeaders(cli.defaultHeaders ?? {}),
                   body: JSON.stringify({
                     model: `models/${m}`,

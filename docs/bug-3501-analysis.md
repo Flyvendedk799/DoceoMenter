@@ -56,19 +56,19 @@ To fix this permanently, DoceoMenter must behave identically to the `agy` CLI by
 
 ## Fix applied (verified against current code)
 
-**What `agy` actually does (and DoceoMenter was skipping):** before `generateContent`, the CLI calls `loadCodeAssist` and, if needed, `onboardUser`. Google returns a *managed* `cloudaicompanionProject` — personal accounts never type a GCP project id. DoceoMenter now does the same during credential resolve, stores the managed id, and sends it as `x-goog-user-project` / `project` on Cloud Code requests.
+**What `agy` actually does:** `loadCodeAssist` with `{ metadata: { ideType: "ANTIGRAVITY" } }` only (no Gemini-CLI `pluginType`/`platform`), then `onboardUser` with snake_case `ide_type`/`ide_version`/`ide_name`. Consumer / G1 accounts call `daily-cloudcode-pa.googleapis.com`, not `.sandbox`. DoceoMenter now matches that wire format, stores the managed project, and sends it on `generateContent`.
 
 **Also:**
 - Browser sessions never fall back to the VPS `agy` login.
 - Dogfood OAuth omits the unregistered `aicode` scope (`403 restricted_client`).
 - Connect UI does not require a typed GCP project id.
-- Cloud Code calls send Antigravity client identity (`User-Agent: antigravity/...`, `Client-Metadata` with `ideType: ANTIGRAVITY`) so Google does not refuse with "Client does not support Google TOS."
-- Dogfood routes to `daily-cloudcode-pa.sandbox.googleapis.com` (not the non-sandbox host, which accepts tokens but returns `#3501`).
-- Discovery soft-fails on ineligibility so `generateContent` can still proceed when a project is already stored.
+- generateContent uses agy's short `User-Agent: antigravity/1.21.9 linux/amd64` and does **not** send Gemini-CLI `Client-Metadata` (that is what produced "Client does not support Google TOS").
+- G1 / Dogfood generateContent goes to `daily-cloudcode-pa.googleapis.com`. Discovery tries daily → prod → sandbox and does not abort when `ineligibleTiers` sits next to an allowed/paid tier.
+- Package `tsc` builds exclude `*.test.ts` so deploy cannot fail on a test-only type error.
 
 Changes:
 
-1. **`ensureCodeAssistProject`** (`packages/auth/src/codeAssist.ts`): `loadCodeAssist` → optional `onboardUser` → managed project id; soft-fail returns null; Dogfood uses the sandbox host.
-2. **`resolveGeminiSubscription`**: resolve + persist that project for UI credentials before the worker calls the model.
-3. **Transport**: Antigravity identity headers + `userAgent`/`requestId` on every Cloud Code `generateContent`; Dogfood base URL override; attaches `x-goog-user-project` when `projectId` is present.
-4. **`antigravityRequestHeaders` / `cloudCodeBaseUrl`** (`packages/shared/src/antigravityIdentity.ts`): shared identity + host picker.
+1. **`ensureCodeAssistProject`**: agy metadata + host fallback + onboard with `tier_id`.
+2. **`resolveGeminiSubscription`**: persist discovered project.
+3. **Transport**: short Antigravity UA; `userAgent`/`requestId` on the body; daily host for G1.
+4. **`packages/shared/src/antigravityIdentity.ts`**: shared hosts, UAs, header builders.

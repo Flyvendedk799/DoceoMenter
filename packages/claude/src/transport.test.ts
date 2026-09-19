@@ -349,20 +349,13 @@ describe("gemini wire", () => {
     await conversation.ask("again");
 
     expect(calls[0]!.url).toBe(
-      "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:generateContent",
+      "https://daily-cloudcode-pa.googleapis.com/v1internal:generateContent",
     );
     // Without the project header the internal endpoint cannot tell which Cloud project to bill.
     expect(calls[0]!.headers.authorization).toBe("Bearer gcli-token");
     expect(calls[0]!.headers["x-goog-user-project"]).toBe("my-project");
-    expect(calls[0]!.headers["user-agent"]).toContain("antigravity/");
-    expect(calls[0]!.headers["x-goog-api-client"]).toContain("vscode_cloudshelleditor");
-    expect(calls[0]!.headers["client-metadata"]).toEqual(
-      JSON.stringify({
-        ideType: "ANTIGRAVITY",
-        platform: "PLATFORM_UNSPECIFIED",
-        pluginType: "GEMINI",
-      }),
-    );
+    expect(calls[0]!.headers["user-agent"]).toBe("antigravity/1.21.9 linux/amd64");
+    expect(calls[0]!.headers["client-metadata"]).toBeUndefined();
     expect(calls[0]!.body.project).toBe("my-project");
     expect(calls[0]!.body.userAgent).toBe("antigravity");
     expect(typeof calls[0]!.body.requestId).toBe("string");
@@ -416,7 +409,8 @@ describe("gemini wire", () => {
     expect(calls[0]!.url).toBe("https://cloudcode-pa.googleapis.com/v1internal:generateContent");
     expect(calls[0]!.headers.authorization).toBe("Bearer gcli-token");
     expect(calls[0]!.headers["x-goog-user-project"]).toBeUndefined();
-    expect(calls[0]!.headers["user-agent"]).toContain("antigravity/");
+    expect(calls[0]!.headers["user-agent"]).toBe("antigravity/1.21.9 linux/amd64");
+    expect(calls[0]!.headers["client-metadata"]).toBeUndefined();
     expect(calls[0]!.body.project).toBeUndefined();
     expect(calls[0]!.body.userAgent).toBe("antigravity");
   });
