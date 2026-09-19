@@ -200,11 +200,11 @@ function createGeneratingClient(transport: Transport, log: (line: string) => voi
           const issue = res.error.issues[0];
           const path = issue?.path?.length ? ` (${issue.path.join(".")})` : "";
           const detail = `${issue?.message ?? "invalid"}${path}`;
-          log(
-            `[${label}] invalid ${spec.name}: ${detail} payload=${JSON.stringify(
-              collected.get(spec.name),
-            ).slice(0, 600)}`,
-          );
+          const payload = JSON.stringify(collected.get(spec.name)).slice(0, 1200);
+          const line = `[${label}] invalid ${spec.name}: ${detail} payload=${payload}`;
+          log(line);
+          // ServerHoster indexes console.error; run.log alone is not visible there.
+          console.error(line);
           // Drop the invalid payload so a corrected re-call can replace it.
           collected.delete(spec.name);
           problems.push(`'${spec.name}' had invalid arguments: ${detail}`);

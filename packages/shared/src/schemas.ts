@@ -146,15 +146,115 @@ export const ShotIdSchema = z
 
 const ImportanceSchema = z.union([z.literal(1), z.literal(2), z.literal(3)]);
 
+const KIND_ALIASES: Record<string, string> = {
+  screenshot: "screenshot",
+  image: "screenshot",
+  screen: "screenshot",
+  still: "screenshot",
+  photo: "screenshot",
+  video: "video",
+  recording: "video",
+  clip: "video",
+};
+
+const TARGET_ALIASES: Record<string, string> = {
+  "live-app": "live-app",
+  live_app: "live-app",
+  liveapp: "live-app",
+  app: "live-app",
+  ui: "live-app",
+  frontend: "live-app",
+  "github-readme": "github-readme",
+  github_readme: "github-readme",
+  readme: "github-readme",
+  "code-architecture": "code-architecture",
+  code_architecture: "code-architecture",
+  architecture: "code-architecture",
+  diagram: "code-architecture",
+  mermaid: "code-architecture",
+};
+
+const INTERACTION_DO: Record<string, string> = {
+  click: "click",
+  fill: "fill",
+  type: "fill",
+  input: "fill",
+  hover: "hover",
+  scrollto: "scrollTo",
+  scroll: "scrollTo",
+  wait: "wait",
+  sleep: "wait",
+  delay: "wait",
+  pause: "wait",
+  press: "press",
+  key: "press",
+  keypress: "press",
+};
+
+function asFiniteNumber(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "" && !Number.isNaN(Number(value))) {
+    return Number(value);
+  }
+  return undefined;
+}
+
+function coerceInteraction(raw: unknown): Record<string, unknown> | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const it: Record<string, unknown> = { ...(raw as Record<string, unknown>) };
+  const rawDo = String(it.do ?? it.action ?? it.type ?? it.op ?? "")
+    .trim()
+    .toLowerCase();
+  const mapped = INTERACTION_DO[rawDo];
+  if (!mapped) return null;
+  it.do = mapped;
+  delete it.action;
+  delete it.type;
+  delete it.op;
+
+  const ms = asFiniteNumber(it.ms);
+  if (ms !== undefined) it.ms = Math.min(10_000, Math.max(0, Math.round(ms)));
+
+  if (mapped === "wait" && (it.ms === undefined || it.ms === null)) it.ms = 500;
+  if (mapped === "fill" && typeof it.text !== "string") {
+    it.text = typeof it.value === "string" ? it.value : "";
+  }
+  if (mapped === "press" && typeof it.key !== "string") {
+    it.key = typeof it.value === "string" ? it.value : "Enter";
+  }
+  if (
+    (mapped === "click" || mapped === "fill" || mapped === "hover" || mapped === "scrollTo") &&
+    typeof it.selector !== "string"
+  ) {
+    it.selector = "body";
+  }
+  return it;
+}
+
+function coerceInteractionList(list: unknown): Record<string, unknown>[] | undefined {
+  if (list === undefined || list === null) return undefined;
+  const arr = Array.isArray(list) ? list : [list];
+  const out = arr.map(coerceInteraction).filter((x): x is Record<string, unknown> => x !== null);
+  return out;
+}
+
 /**
  * Coerce quirks common from Antigravity / Gemini tool JSON before Zod:
- * stringy numbers, omitted viewport / maxDurationMs (optional in the tool schema
- * the model sees), and slightly messy shot ids. Without this, unions collapse to
- * a useless "Invalid input" (ServerHoster run ca2585f3357f).
+ * stringy numbers, omitted viewport / maxDurationMs, aliases for kind/target,
+ * invented interaction verbs, and slightly messy shot ids. Without this, Zod
+ * unions collapse to opaque "Invalid input" (runs ca2585f3357f, 79c6c7cbc18c).
  */
 export function normalizeShotInput(raw: unknown): unknown {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
-  const s: Record<string, unknown> = { ...(raw as Record<string, unknown>) };
+  let value: unknown = raw;
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return raw;
+    }
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const s: Record<string, unknown> = { ...(value as Record<string, unknown>) };
 
   if (typeof s.id === "string") {
     const cleaned = s.id
@@ -163,56 +263,134 @@ export function normalizeShotInput(raw: unknown): unknown {
       .replace(/^-+|-+$/g, "")
       .slice(0, 64);
     s.id = cleaned.length > 0 ? cleaned : "shot";
+  } else if (s.id === undefined || s.id === null) {
+    s.id = "shot";
+  } else {
+    s.id = String(s.id)
+      .replace(/[^A-Za-z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 64) || "shot";
   }
 
-  if (typeof s.importance === "string" && /^\d+$/.test(s.importance.trim())) {
-    s.importance = Number(s.importance.trim());
+  if (typeof s.kind === "string") {
+    const key = s.kind.trim().toLowerCase().replace(/\s+/g, "");
+    s.kind = KIND_ALIASES[key] ?? s.kind.trim().toLowerCase();
   }
-  if (typeof s.importance === "number" && Number.isFinite(s.importance)) {
-    s.importance = Math.min(3, Math.max(1, Math.round(s.importance)));
+  if (typeof s.target === "string") {
+    const key = s.target.trim().toLowerCase().replace(/\s+/g, "-").replace(/_/g, "-");
+    const compact = key.replace(/-/g, "");
+    s.target =
+      TARGET_ALIASES[key] ??
+      TARGET_ALIASES[compact] ??
+      s.target.trim().toLowerCase();
   }
-  if (s.importance === undefined || s.importance === null) {
+
+  const importance = asFiniteNumber(s.importance);
+  if (importance !== undefined) {
+    s.importance = Math.min(3, Math.max(1, Math.round(importance)));
+  } else if (s.importance === undefined || s.importance === null) {
     s.importance = 2;
   }
 
   if (s.viewport && typeof s.viewport === "object" && !Array.isArray(s.viewport)) {
     const v = { ...(s.viewport as Record<string, unknown>) };
-    if (typeof v.w === "string" && v.w.trim() !== "") v.w = Number(v.w);
-    if (typeof v.h === "string" && v.h.trim() !== "") v.h = Number(v.h);
+    if (v.w === undefined && v.width !== undefined) v.w = v.width;
+    if (v.h === undefined && v.height !== undefined) v.h = v.height;
+    const w = asFiniteNumber(v.w);
+    const h = asFiniteNumber(v.h);
+    if (w !== undefined) v.w = w;
+    if (h !== undefined) v.h = h;
     s.viewport = v;
+  }
+
+  if (typeof s.route !== "string" || s.route.trim() === "") {
+    if (s.target === "live-app") s.route = "/";
+  } else if (!s.route.startsWith("/")) {
+    s.route = `/${s.route}`;
+  }
+
+  if (typeof s.caption !== "string" || s.caption.trim() === "") {
+    s.caption = typeof s.id === "string" ? s.id : "Capture";
+  }
+
+  if (typeof s.fullPage === "string") {
+    const t = s.fullPage.trim().toLowerCase();
+    if (t === "true" || t === "1" || t === "yes") s.fullPage = true;
+    else if (t === "false" || t === "0" || t === "no") s.fullPage = false;
+  }
+
+  if (typeof s.diagramSpec === "string") {
+    s.diagramSpec = { mermaid: s.diagramSpec };
+  } else if (s.diagramSpec && typeof s.diagramSpec === "object" && !Array.isArray(s.diagramSpec)) {
+    const d = { ...(s.diagramSpec as Record<string, unknown>) };
+    if (typeof d.mermaid !== "string" && typeof d.diagram === "string") d.mermaid = d.diagram;
+    if (typeof d.mermaid === "string" && d.mermaid.trim().length < 10) {
+      d.mermaid = `${d.mermaid.trim()}\n%% padded`;
+    }
+    s.diagramSpec = d;
+  }
+  if (
+    s.target === "code-architecture" &&
+    (s.diagramSpec === undefined || s.diagramSpec === null)
+  ) {
+    s.diagramSpec = { mermaid: "flowchart TD\n  A[App] --> B[Core]" };
   }
 
   if (s.kind === "screenshot" && s.target === "live-app" && (s.viewport === undefined || s.viewport === null)) {
     s.viewport = { ...DEFAULT_VIEWPORT };
   }
 
-  if (typeof s.maxDurationMs === "string" && s.maxDurationMs.trim() !== "") {
-    s.maxDurationMs = Number(s.maxDurationMs);
-  }
+  const maxMs = asFiniteNumber(s.maxDurationMs);
+  if (maxMs !== undefined) s.maxDurationMs = Math.min(30_000, Math.max(2_000, Math.round(maxMs)));
   if (s.kind === "video" && (s.maxDurationMs === undefined || s.maxDurationMs === null)) {
     s.maxDurationMs = DEFAULT_VIDEO_MS;
   }
 
-  const coerceInteractions = (list: unknown): unknown => {
-    if (!Array.isArray(list)) return list;
-    return list.map((item) => {
-      if (!item || typeof item !== "object") return item;
-      const it = { ...(item as Record<string, unknown>) };
-      if (typeof it.ms === "string" && it.ms.trim() !== "") it.ms = Number(it.ms);
-      return it;
-    });
-  };
-  if (s.interactions !== undefined) s.interactions = coerceInteractions(s.interactions);
-  if (s.script !== undefined) s.script = coerceInteractions(s.script);
+  if (s.interactions !== undefined) {
+    const list = coerceInteractionList(s.interactions);
+    s.interactions = list && list.length > 0 ? list : undefined;
+  }
+  if (s.script !== undefined) {
+    const list = coerceInteractionList(s.script);
+    s.script = list && list.length > 0 ? list : undefined;
+  }
+  if (s.kind === "video" && (!Array.isArray(s.script) || s.script.length === 0)) {
+    s.script = [{ do: "wait", ms: 1000 }];
+  }
 
   return s;
 }
 
+function shotsFromUnknown(raw: unknown): unknown[] | undefined {
+  if (typeof raw === "string") {
+    try {
+      return shotsFromUnknown(JSON.parse(raw));
+    } catch {
+      return undefined;
+    }
+  }
+  if (Array.isArray(raw)) return raw;
+  if (raw && typeof raw === "object") {
+    const values = Object.values(raw as Record<string, unknown>);
+    if (values.length > 0 && values.every((v) => v && typeof v === "object")) return values;
+  }
+  return undefined;
+}
+
 export function normalizeCapturePlanInput(raw: unknown): unknown {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
-  const o = { ...(raw as Record<string, unknown>) };
-  if (Array.isArray(o.shots)) {
-    o.shots = o.shots.map(normalizeShotInput);
+  let value: unknown = raw;
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return raw;
+    }
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const o = { ...(value as Record<string, unknown>) };
+  const shots = shotsFromUnknown(o.shots);
+  if (shots) {
+    o.shots = shots.map(normalizeShotInput).slice(0, 10);
   }
   return o;
 }

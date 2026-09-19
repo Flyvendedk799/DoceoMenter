@@ -97,6 +97,66 @@ describe("ShotSchema viewport bounds", () => {
       }
     }
   });
+
+  it("maps Gemini aliases and drops invented interaction verbs", () => {
+    const plan = CapturePlanSchema.safeParse({
+      shots: [
+        {
+          id: "home",
+          kind: "image",
+          target: "live_app",
+          route: "dashboard",
+          viewport: { width: "1280", height: "720" },
+          caption: "",
+          importance: 0,
+          interactions: [
+            { action: "navigate", url: "/x" },
+            { do: "scroll", selector: "#main" },
+            { type: "sleep", ms: "800" },
+          ],
+        },
+        {
+          id: "arch",
+          kind: "screenshot",
+          target: "architecture",
+          diagramSpec: "graph TD; A-->B",
+          caption: "Architecture",
+          importance: "1",
+        },
+        {
+          id: "tour",
+          kind: "recording",
+          target: "app",
+          script: [{ action: "type", selector: "input", text: "hi" }],
+        },
+      ],
+    });
+    expect(plan.success).toBe(true);
+    if (!plan.success) return;
+    const [home, arch, tour] = plan.data.shots;
+    expect(home).toMatchObject({
+      kind: "screenshot",
+      target: "live-app",
+      route: "/dashboard",
+      viewport: { w: 1280, h: 720 },
+      importance: 1,
+    });
+    if (home && home.kind === "screenshot" && home.target === "live-app") {
+      expect(home.interactions).toEqual([
+        { do: "scrollTo", selector: "#main" },
+        { do: "wait", ms: 800 },
+      ]);
+    }
+    expect(arch).toMatchObject({
+      kind: "screenshot",
+      target: "code-architecture",
+      diagramSpec: { mermaid: "graph TD; A-->B" },
+    });
+    expect(tour).toMatchObject({ kind: "video", target: "live-app" });
+    if (tour && tour.kind === "video") {
+      expect(tour.script[0]).toEqual({ do: "fill", selector: "input", text: "hi" });
+    }
+  });
 });
 
 describe("isValidRunId", () => {
