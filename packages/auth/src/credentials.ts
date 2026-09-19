@@ -164,6 +164,12 @@ async function resolveCodexSubscription(
  * There is no third, deployment-wide fallback the way the metered providers have one, and no
  * "OAuth is unreachable here, only machine login" carve-out the way it briefly was — see
  * `geminiOAuth.ts`'s header for how the browser flow became possible.
+ *
+ * Important difference from Claude when a *browser account id* is present: never fall through
+ * to the host's `agy` login. A visitor who opened the provider panel is paying with *their*
+ * Google account; silently spending the VPS operator's machine login (often on the wrong
+ * Prod/Dogfood endpoint) is how #3501 shows up as "agy on the server was rejected" while
+ * the UI looked connected — or worse, while the UI was never asked to connect at all.
  */
 async function resolveGeminiSubscription(
   options: ResolveOptions,
@@ -183,6 +189,10 @@ async function resolveGeminiSubscription(
         source: "account",
       };
     }
+    throw new CredentialError(
+      "No Gemini subscription is connected for this browser. Open the provider panel, choose Gemini subscription, and Connect with Google (check G1 Dogfood if that is where your license lives). The machine `agy` login on the server is not used for browser runs.",
+      "gemini-cli",
+    );
   }
 
   if (runtime.config.allowLocalCli) {

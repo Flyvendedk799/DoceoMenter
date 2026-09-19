@@ -65,6 +65,8 @@ export type WireCredential =
       projectId: string | null;
       /** When true, route to the Dogfood Cloud Code host (`daily-cloudcode-pa`). */
       isDogfood?: boolean;
+      /** Where the token came from — shapes auth-failure messages. */
+      source?: "account" | "local-cli";
     };
 
 export type TransportOptions = {
@@ -121,9 +123,28 @@ export function createTransport(options: TransportOptions): Transport {
 function fail(error: unknown, options: TransportOptions, model: string): never {
   if (error instanceof ProviderCallError) throw error;
   const facts = providerErrorFacts(error);
-  const described = describeProviderError(error, options.provider, model, {
+  let described = describeProviderError(error, options.provider, model, {
     ...(options.configureAt ? { configureAt: options.configureAt } : {}),
   });
+
+  // ai-auth's gemini-cli 401/403 copy always blames the machine `agy` login. Browser runs use
+  // the panel credential instead — say that, or the user goes and re-runs `agy` on the VPS.
+  if (
+    options.provider === "gemini-cli" &&
+    (facts.status === 401 || facts.status === 403) &&
+    options.credential.kind === "subscription" &&
+    options.credential.wire === "gemini" &&
+    options.credential.source === "account"
+  ) {
+    const detail = facts.detail ? ` (The provider said: ${facts.detail})` : "";
+    const at = options.configureAt ? ` in ${options.configureAt}` : "";
+    described =
+      `Google rejected the Gemini subscription connected${at || " in the provider panel"} for \`${model}\`. ` +
+      `Disconnect and Connect with Google again there` +
+      `${options.credential.isDogfood ? " (Dogfood is already selected on this credential)" : " — if your license is on G1 Dogfood, check that box before connecting"}` +
+      `. This run is not using the machine \`agy\` login.${detail}`;
+  }
+
   const message = described ?? `[${options.provider}] ${(error as Error)?.message ?? "call failed"}`;
   throw new ProviderCallError(message, facts, options.provider, model, { cause: error });
 }

@@ -194,6 +194,14 @@ describe("gemini subscription resolution", () => {
       /No Gemini subscription is connected/,
     );
   });
+
+  it("does not fall back to the machine agy login when a browser account id is present", async () => {
+    // ALLOW_LOCAL_CLI on: a host may have agy, but a browser run must not silently spend it.
+    const runtime = await runtimeIn({ ALLOW_LOCAL_CLI: "true" });
+    await expect(
+      resolveProviderCredential({ provider: "gemini-cli", accountId: "browser-only", runtime }),
+    ).rejects.toThrow(/not used for browser runs/i);
+  });
 });
 
 describe("status for the provider panel", () => {
