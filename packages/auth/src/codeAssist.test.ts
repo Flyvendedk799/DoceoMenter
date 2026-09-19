@@ -38,15 +38,28 @@ describe("ensureCodeAssistProject", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("skips loadCodeAssist for Dogfood — agy never needs a typed project there", async () => {
-    const { calls, impl } = recorder([{ body: { cloudaicompanionProject: "should-not-be-used" } }]);
+  it("uses the Dogfood sandbox host for G1 discovery", async () => {
+    const { calls, impl } = recorder([
+      {
+        body: {
+          currentTier: { id: "free-tier", name: "Free" },
+          cloudaicompanionProject: "dogfood-managed-abc",
+        },
+      },
+    ]);
     const projectId = await ensureCodeAssistProject({
       accessToken: "ya29",
       isDogfood: true,
       fetchImpl: impl,
     });
-    expect(projectId).toBeNull();
-    expect(calls).toHaveLength(0);
+    expect(projectId).toBe("dogfood-managed-abc");
+    expect(calls[0]!.url).toBe(
+      "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:loadCodeAssist",
+    );
+    expect(calls[0]!.body).toMatchObject({
+      metadata: { ideType: "ANTIGRAVITY", pluginType: "GEMINI" },
+    });
+    expect(calls[0]!.headers["user-agent"]).toContain("antigravity/");
   });
 
   it("uses cloudaicompanionProject from loadCodeAssist when already onboarded", async () => {
@@ -68,7 +81,7 @@ describe("ensureCodeAssistProject", () => {
     expect(calls[0]!.body).toMatchObject({
       metadata: { ideType: "ANTIGRAVITY", pluginType: "GEMINI" },
     });
-    expect(calls[0]!.headers["user-agent"]).toBe("antigravity");
+    expect(calls[0]!.headers["user-agent"]).toContain("antigravity/");
     expect(calls[0]!.headers["x-goog-api-client"]).toContain("vscode_cloudshelleditor");
   });
 
