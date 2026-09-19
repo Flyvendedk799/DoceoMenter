@@ -73,12 +73,11 @@ export type ClaudeClient = {
 
 const TOKEN_BUDGET = {
   conceptInput: 8000,
-  conceptOutput: 6000,
+  // Thinking models spend ~500–2000 tokens before tool JSON; 6000 was too tight and
+  // produced MALFORMED_FUNCTION_CALL with empty tool calls (ServerHoster run c2f352a52e19).
+  conceptOutput: 16000,
   technicalInput: 12000,
-  // The technical pass emits four tool calls (technical + case brief + captions
-  // + summary), the largest of which is the case brief — 4000 risks truncating
-  // a tool call mid-JSON.
-  technicalOutput: 8000,
+  technicalOutput: 16000,
 } as const;
 
 const DEFAULT_MODELS: Record<AiProvider, { primary: string; fallback: string }> = {
@@ -87,7 +86,8 @@ const DEFAULT_MODELS: Record<AiProvider, { primary: string; fallback: string }> 
   openai: { primary: "gpt-5", fallback: "gpt-5-mini" },
   codex: { primary: "gpt-5", fallback: "gpt-5-mini" },
   gemini: { primary: "gemini-3.1-pro", fallback: "gemini-3-flash" },
-  "gemini-cli": { primary: "gemini-3.1-pro-low", fallback: "gemini-3-flash" },
+  // Flash reliably emits parallel tool calls on Cloud Code; pro-low often MALFORMED_FUNCTION_CALL.
+  "gemini-cli": { primary: "gemini-3-flash", fallback: "gemini-3.1-pro-low" },
 };
 
 export function createClaudeClient(opts: ClaudeClientOptions = {}): ClaudeClient {

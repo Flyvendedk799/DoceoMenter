@@ -5,9 +5,10 @@ export type WireKind = "anthropic" | "openai" | "gemini";
 /**
  * Pick the models a run will call.
  *
- * An explicit panel selection wins and is used alone — no silent downgrade to the
- * deployment's GEMINI_MODEL_FALLBACK / etc. That mismatch is how a UI showing
- * `gemini-3.1-pro` ended up erroring about `gemini-1.5-flash`.
+ * An explicit panel selection wins for the primary. For Antigravity (gemini wire),
+ * always keep `gemini-3-flash` as fallback when the panel picks a non-flash model —
+ * `gemini-3.1-pro-low` frequently returns MALFORMED_FUNCTION_CALL on DoceoMenter's
+ * complex tool schemas (ServerHoster run c2f352a52e19), and flash reliably emits tools.
  */
 export function resolveRunModels(input: {
   wire: WireKind;
@@ -31,6 +32,15 @@ export function resolveRunModels(input: {
       primary: input.configuredPrimary,
       fallback: input.configuredFallback,
       fromPanel: false,
+    };
+  }
+
+  if (input.wire === "gemini") {
+    const isFlash = /flash/i.test(requested);
+    return {
+      primary: requested,
+      fallback: isFlash ? requested : "gemini-3-flash",
+      fromPanel: true,
     };
   }
 

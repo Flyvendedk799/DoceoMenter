@@ -34,3 +34,11 @@ describe("normalizeAntigravityModelId", () => {
     expect(normalizeAntigravityModelId("models/gemini-3.1-pro")).toBe("gemini-3.1-pro-low");
   });
 });
+
+describe("antigravityThinkingBudget", () => {
+  it("requires a thinking budget for gemini-3.1-pro models", async () => {
+    const { antigravityThinkingBudget } = await import("./antigravityIdentity.js");
+    expect(antigravityThinkingBudget("gemini-3.1-pro-low")).toBe(1024);
+    expect(antigravityThinkingBudget("gemini-3-flash")).toBeNull();
+  });
+});

@@ -56,13 +56,21 @@ export function sanitizePersonalCloudCodeProject(
 
 /**
  * Cloud Code subscription model ids as `agy` sends them (bare, no `models/` prefix).
- * UI/env often say `gemini-3.1-pro`, but daily only knows the tiered ids.
+ * UI/env often say `gemini-3.1-pro`; daily only knows tiered ids. Prefer flash for tool
+ * calling — `gemini-3.1-pro-low` frequently returns MALFORMED_FUNCTION_CALL on complex schemas.
  */
 export function normalizeAntigravityModelId(model: string): string {
   const trimmed = model.trim();
   const bare = trimmed.startsWith("models/") ? trimmed.slice("models/".length) : trimmed;
   if (bare === "gemini-3.1-pro" || bare === "gemini-3-pro") return "gemini-3.1-pro-low";
   return bare;
+}
+
+/** Models that must think; tool JSON needs headroom beyond the thinking budget. */
+export function antigravityThinkingBudget(model: string): number | null {
+  const id = normalizeAntigravityModelId(model);
+  if (id.startsWith("gemini-3.1-pro") || id === "gemini-pro-agent") return 1024;
+  return null;
 }
 
 export const CLOUD_CODE_PROD_BASE_URL = "https://cloudcode-pa.googleapis.com/v1internal";

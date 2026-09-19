@@ -28,6 +28,7 @@ import {
 import { describeProviderError, providerErrorFacts, type ProviderId } from "@flyvendedk799/ai-auth/registry";
 import {
   antigravityRequestHeaders,
+  antigravityThinkingBudget,
   cloudCodeBaseUrl,
   normalizeAntigravityModelId,
   sanitizePersonalCloudCodeProject,
@@ -88,10 +89,19 @@ export type TransportOptions = {
   configureAt?: string;
 };
 
-/** Rate limit, overloaded, and transient 5xx — the failures worth trying the other model for. */
+/** Rate limit, overloaded, transient 5xx, and Gemini tool-call malformations worth a fallback. */
 const RETRYABLE = new Set([429, 500, 502, 503, 529]);
 
 const MAX_ATTEMPTS_PER_MODEL = 1;
+
+/** Thrown when Cloud Code returns HTTP 200 but no usable functionCall (MALFORMED / empty). */
+class GeminiToolCallError extends Error {
+  status = 503;
+  constructor(message: string) {
+    super(message);
+    this.name = "GeminiToolCallError";
+  }
+}
 
 /**
  * A provider failure, already turned into a sentence someone can act on.
@@ -572,36 +582,40 @@ function geminiTransport(options: TransportOptions): Transport {
         async ask(userText: string): Promise<Turn> {
           contents.push({ role: "user", parts: [{ text: userText }] });
 
-          const generateRequest = {
+          const generateRequestBase = {
             contents,
             systemInstruction,
             tools: [{ functionDeclarations: declarations }],
-            toolConfig: { functionCallingConfig: { mode: "ANY" } },
-            generationConfig: { maxOutputTokens: maxTokens },
+            toolConfig: { functionCallingConfig: { mode: "ANY" as const } },
           };
 
           const json = await withFallback(options, (m) => (model = m), async (m) => {
+            const wireModel = normalizeAntigravityModelId(m);
+            const thinkingBudget = antigravityThinkingBudget(wireModel);
+            const requestBody = {
+              ...generateRequestBase,
+              generationConfig: {
+                maxOutputTokens: maxTokens,
+                // gemini-3.1-pro-* only works in thinking mode; without an explicit budget it
+                // often finishes MALFORMED_FUNCTION_CALL on complex tool schemas (run c2f352a52e19).
+                ...(thinkingBudget ? { thinkingConfig: { thinkingBudget } } : {}),
+              },
+            };
             if (geminiSub) {
               options.logger(
-                `[antigravity] generateContent model=${m} host=${cli.baseURL} ` +
+                `[antigravity] generateContent model=${wireModel} host=${cli.baseURL} ` +
                   `headerProject=${personalProjectId ?? "(none)"} bodyProject=${bodyProjectId ?? "(none)"} ` +
-                  `dogfood=${geminiSub.isDogfood ? "yes" : "no"}`,
+                  `dogfood=${geminiSub.isDogfood ? "yes" : "no"} thinkingBudget=${thinkingBudget ?? "n/a"}`,
               );
             }
             const response = geminiSub
               ? await doFetch(`${cli.baseURL}:generateContent`, {
                   method: "POST",
-                  // Authorization + optional x-goog-user-project (personal only) from
-                  // `antigravityCliOptions`, plus agy's short User-Agent.
                   headers: antigravityRequestHeaders(cli.defaultHeaders ?? {}),
                   body: JSON.stringify({
-                    // Bare id — `models/` prefix 404s on daily Cloud Code (verified vs agy).
-                    model: normalizeAntigravityModelId(m),
-                    // Body may carry aicode-consumers when that is all Google offers; the
-                    // header above will not, so we avoid the serviceUsageConsumer 403.
+                    model: wireModel,
                     ...(bodyProjectId ? { project: bodyProjectId } : {}),
-                    request: generateRequest,
-                    // Required by the Antigravity gateway — same fields `agy` sends.
+                    request: requestBody,
                     userAgent: "antigravity",
                     requestId: `doceomenter-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
                   }),
@@ -609,19 +623,54 @@ function geminiTransport(options: TransportOptions): Transport {
               : await doFetch(`${cli.baseURL}/models/${m}:generateContent`, {
                   method: "POST",
                   headers: { "content-type": "application/json", "x-goog-api-key": cli.apiKey ?? "" },
-                  body: JSON.stringify(generateRequest),
+                  body: JSON.stringify(requestBody),
                 });
             await throwForStatus(response, "gemini");
-            return (await response.json()) as GeminiGenerateResponse;
+            const parsed = (await response.json()) as GeminiGenerateResponse;
+            // Empty / malformed tool calls on subscription: retryable so withFallback can
+            // switch to gemini-3-flash (verified reliable vs pro-low MALFORMED_FUNCTION_CALL).
+            if (geminiSub && declarations.length > 0) {
+              const cand = (parsed.response?.candidates ?? parsed.candidates ?? [])[0];
+              const responseParts = cand?.content?.parts ?? [];
+              const hasCall = responseParts.some((p) => "functionCall" in p && p.functionCall);
+              const finish = cand?.finishReason;
+              if (!hasCall) {
+                const detail =
+                  finish === "MALFORMED_FUNCTION_CALL"
+                    ? "MALFORMED_FUNCTION_CALL"
+                    : `finishReason=${finish ?? "none"} parts=${responseParts.length}`;
+                options.logger(
+                  `[antigravity] no functionCall from ${wireModel} (${detail}); falling back if configured`,
+                );
+                throw new GeminiToolCallError(
+                  `Antigravity ${wireModel} returned no tool calls (${detail})`,
+                );
+              }
+            }
+            return parsed;
           });
 
           const candidate = (json.response?.candidates ?? json.candidates ?? [])[0];
           const parts = candidate?.content?.parts ?? [];
+          const finishReason = candidate?.finishReason;
 
           const calls: ToolCall[] = [];
           for (const part of parts) {
             if ("functionCall" in part && part.functionCall) {
-              calls.push({ id: part.functionCall.name, name: part.functionCall.name, input: part.functionCall.args });
+              const rawArgs = part.functionCall.args;
+              let input: unknown = rawArgs;
+              if (typeof rawArgs === "string") {
+                try {
+                  input = JSON.parse(rawArgs);
+                } catch {
+                  input = rawArgs;
+                }
+              }
+              calls.push({
+                id: part.functionCall.name,
+                name: part.functionCall.name,
+                input,
+              });
             }
           }
 
@@ -637,8 +686,9 @@ function geminiTransport(options: TransportOptions): Transport {
 
           return {
             calls,
-            truncated: candidate?.finishReason === "MAX_TOKENS",
-            refusal: !!candidate?.finishReason && GEMINI_REFUSAL_REASONS.has(candidate.finishReason),
+            truncated:
+              finishReason === "MAX_TOKENS" || finishReason === "MALFORMED_FUNCTION_CALL",
+            refusal: !!finishReason && GEMINI_REFUSAL_REASONS.has(finishReason),
           };
         },
       };
