@@ -199,40 +199,6 @@ describe("gemini subscription resolution", () => {
       source: "account",
     });
   });
-
-  it("surfaces standard-tier missing GCP project as a recoverable CredentialError", async () => {
-    const runtime = await runtimeIn();
-    await runtime.geminiAccounts.save("account-1", { ...identity, isDogfood: true });
-
-    const fetchImpl = (async () => {
-      return new Response(
-        JSON.stringify({
-          allowedTiers: [
-            {
-              id: "standard-tier",
-              isDefault: true,
-              userDefinedCloudaicompanionProject: true,
-            },
-          ],
-          ineligibleTiers: [{ tierId: "free-tier", reasonCode: "INELIGIBLE" }],
-        }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      );
-    }) as unknown as typeof fetch;
-
-    await expect(
-      resolveProviderCredential({
-        provider: "gemini-cli",
-        accountId: "account-1",
-        runtime,
-        fetchImpl,
-      }),
-    ).rejects.toMatchObject({
-      name: "CredentialError",
-      provider: "gemini-cli",
-      message: expect.stringMatching(/PERSONAL GCP PROJECT|standard-tier/i),
-    });
-  });
   it("persists a managed project discovered via loadCodeAssist on Prod", async () => {
     const runtime = await runtimeIn();
     await runtime.geminiAccounts.save("account-1", { ...identity, isDogfood: false });

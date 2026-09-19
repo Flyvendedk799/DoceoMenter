@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ensureCodeAssistProject, gcpProjectRequiredMessage } from "./codeAssist.js";
+import { ensureCodeAssistProject } from "./codeAssist.js";
 
 type Captured = { url: string; method: string; body: unknown; headers: Record<string, string> };
 
@@ -159,7 +159,7 @@ describe("ensureCodeAssistProject", () => {
     expect(calls[1]!.body).toMatchObject({ tier_id: "free-tier" });
   });
 
-  it("throws when Google only offers standard-tier and no user GCP project is set", async () => {
+  it("soft-continues when Google only offers standard-tier and no user GCP project is set", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const { calls, impl } = recorder([
       {
@@ -186,7 +186,20 @@ describe("ensureCodeAssistProject", () => {
           ineligibleTiers: [{ tierId: "free-tier", reasonCode: "INELIGIBLE" }],
         },
       },
+      {
+        body: {
+          allowedTiers: [
+            {
+              id: "standard-tier",
+              isDefault: true,
+              userDefinedCloudaicompanionProject: true,
+            },
+          ],
+          ineligibleTiers: [{ tierId: "free-tier", reasonCode: "INELIGIBLE" }],
+        },
+      },
     ]);
+    // Like agy: never hard-fail just because Google asked for a user project we do not have yet.
     await expect(
       ensureCodeAssistProject({
         accessToken: "ya29",
@@ -194,8 +207,7 @@ describe("ensureCodeAssistProject", () => {
         fetchImpl: impl,
         sleep: async () => {},
       }),
-    ).rejects.toThrow(gcpProjectRequiredMessage());
-    // Must not waste a free-tier daily onboard after Google already required a user project.
+    ).resolves.toBeNull();
     expect(calls.every((c) => !String(c.url).endsWith(":onboardUser"))).toBe(true);
     error.mockRestore();
   });
