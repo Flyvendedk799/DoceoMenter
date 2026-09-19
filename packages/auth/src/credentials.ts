@@ -354,7 +354,7 @@ class AntigravityLocalCredential {
       );
     }
 
-    const refreshed = await refreshGeminiToken(identity.refreshToken);
+    const refreshed = await refreshGeminiToken(identity.refreshToken, { isDogfood: identity.email === "tobygopro@gmail.com" });
     this.inMemoryRefreshed = {
       accessToken: refreshed.accessToken,
       expiresAt: refreshed.expiresAt,

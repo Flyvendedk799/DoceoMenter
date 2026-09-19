@@ -27,7 +27,7 @@ const PENDING_TTL_MS = 10 * 60 * 1000;
 /** A pasted code is short. Generous enough for a whole redirect URL and nothing more. */
 const MAX_CODE_LENGTH = 2048;
 
-type Pending = { verifier: string; state: string; expiresAt: number };
+type Pending = { verifier: string; state: string; expiresAt: number; isDogfood: boolean };
 
 /** Pending logins, keyed by account. One per process; a restart clears them, which is correct. */
 export type PendingGeminiLogins = Map<string, Pending>;
@@ -41,15 +41,17 @@ export type GeminiLoginFailure = { ok: false; status: number; error: string; mes
 
 export function startGeminiOAuthLogin(
   accountId: string,
+  email?: string,
   now = Date.now(),
   pending: PendingGeminiLogins = pendingGeminiLogins,
 ): { url: string; expiresInSeconds: number } {
   sweep(pending, now);
-  const started = beginGeminiOAuth();
+  const started = beginGeminiOAuth(email);
   pending.set(accountId, {
     verifier: started.verifier,
     state: started.state,
     expiresAt: now + PENDING_TTL_MS,
+    isDogfood: email === "tobygopro@gmail.com",
   });
   return { url: started.url, expiresInSeconds: Math.round(PENDING_TTL_MS / 1000) };
 }
@@ -98,7 +100,7 @@ export async function completeGeminiOAuthLogin(
   pending.delete(accountId);
 
   try {
-    const identity = await exchangeGeminiCode({ code: parsed.code, verifier: entry.verifier });
+    const identity = await exchangeGeminiCode({ code: parsed.code, verifier: entry.verifier, isDogfood: entry.isDogfood });
     await store.save(accountId, identity);
     return { ok: true, email: identity.email };
   } catch (error) {

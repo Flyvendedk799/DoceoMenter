@@ -27,5 +27,7 @@ export async function POST(request: Request) {
       caller,
     );
   }
-  return withAccountCookie(NextResponse.json(startGeminiOAuthLogin(caller.accountId)), caller);
+  const body = await request.json().catch(() => ({}));
+  const email = typeof body.email === "string" ? body.email.trim() : undefined;
+  return withAccountCookie(NextResponse.json(startGeminiOAuthLogin(caller.accountId, email)), caller);
 }

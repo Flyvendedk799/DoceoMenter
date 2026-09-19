@@ -244,6 +244,7 @@ function GeminiConnect({
   onRefresh: () => void;
 }) {
   const [loginUrl, setLoginUrl] = useState<string | undefined>();
+  const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | undefined>();
@@ -252,7 +253,12 @@ function GeminiConnect({
     setBusy(true);
     setNote(undefined);
     try {
-      const response = await fetch("/api/gemini/login", { method: "POST", credentials: "same-origin" });
+      const response = await fetch("/api/gemini/login", { 
+        method: "POST", 
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: email.trim() }),
+      });
       const body = (await response.json().catch(() => ({}))) as { url?: string; message?: string };
       if (!response.ok || !body.url) throw new Error(body.message ?? `HTTP ${response.status}`);
       setLoginUrl(body.url);
@@ -321,16 +327,29 @@ function GeminiConnect({
         </p>
         
         <div className="space-y-2 pt-2 border-t border-line">
-          {!loginUrl ? (
-            <>
-              <p className="text-[12.5px] leading-[1.6] text-fg-muted">
-                You can override this by connecting your own Google account below.
-              </p>
-              <button type="button" disabled={busy} onClick={() => void start()} className="dm-btn h-11 px-5 text-[13px]">
-                Connect with Google
-              </button>
-            </>
-          ) : (
+            {!loginUrl ? (
+              <div className="flex flex-col gap-2">
+                <p className="text-[12.5px] leading-[1.6] text-fg-muted">
+                  You can override this by connecting your own Google account below.
+                </p>
+                <input
+                  type="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Enter email to begin..."
+                  className="dm-input h-11 min-w-0 flex-1 font-mono text-[13px]"
+                />
+                <button 
+                  type="button" 
+                  disabled={busy || !email.trim()} 
+                  onClick={() => void start()} 
+                  className="dm-btn h-11 px-5 text-[13px] self-start"
+                >
+                  Connect with Google
+                </button>
+              </div>
+            ) : (
             <div className="space-y-2">
               <p className="text-[12.5px] leading-[1.6] text-fg-muted">
                 Open this URL, approve, and paste back the code it shows:
@@ -370,20 +389,33 @@ function GeminiConnect({
 
   return (
     <div className="space-y-2">
-      {!loginUrl ? (
-        <>
-          <p className="dm-well rounded-sm px-3.5 py-3 text-[12.5px] leading-[1.65] text-fg-muted">
-            Sign in with the Google account whose plan should pay for this run. This uses Antigravity
-            CLI&apos;s own Google sign-in — the run only works once that account holds a Gemini Code
-            Assist license (personal Google sign-in with no license attached is refused by Google, not
-            by DoceoMenter).
-            {!localCliEnabled ? "" : " A `agy` login on the machine hosting DoceoMenter works too, if one exists."}
-          </p>
-          <button type="button" disabled={busy} onClick={() => void start()} className="dm-btn h-11 px-5 text-[13px]">
-            Connect with Google
-          </button>
-        </>
-      ) : (
+        {!loginUrl ? (
+          <div className="flex flex-col gap-2">
+            <p className="dm-well rounded-sm px-3.5 py-3 text-[12.5px] leading-[1.65] text-fg-muted">
+              Sign in with the Google account whose plan should pay for this run. This uses Antigravity
+              CLI&apos;s own Google sign-in — the run only works once that account holds a Gemini Code
+              Assist license (personal Google sign-in with no license attached is refused by Google, not
+              by DoceoMenter).
+              {!localCliEnabled ? "" : " A `agy` login on the machine hosting DoceoMenter works too, if one exists."}
+            </p>
+            <input
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Enter email to begin..."
+              className="dm-input h-11 min-w-0 flex-1 font-mono text-[13px]"
+            />
+            <button 
+              type="button" 
+              disabled={busy || !email.trim()} 
+              onClick={() => void start()} 
+              className="dm-btn h-11 px-5 text-[13px] self-start"
+            >
+              Connect with Google
+            </button>
+          </div>
+        ) : (
         <div className="space-y-2">
           <p className="text-[12.5px] leading-[1.6] text-fg-muted">
             Open this URL, approve, and paste back the code it shows:
