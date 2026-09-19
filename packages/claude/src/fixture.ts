@@ -51,6 +51,9 @@ export function createFixtureClient(): ClaudeClient {
 }
 
 function shortPurpose(a: Analysis): string {
+  const surface = a.productSurfaces?.find((s) => s.title || s.text.length > 12);
+  if (surface?.title) return surface.title;
+  if (surface?.text) return firstSentence(surface.text);
   const headings = a.readme?.firstNHeadings ?? [];
   const fromReadme = headings.find((h) => h.length > 4 && h.length < 80);
   if (fromReadme) return fromReadme;
@@ -70,25 +73,38 @@ function stackSummary(a: Analysis): string {
 
 function buildConcept(a: Analysis): Concept {
   const purpose = shortPurpose(a);
-  const what = `${a.repo.name} is ${purpose}. Static analysis detects ${
+  const surfaceHint = a.productSurfaces?.[0]
+    ? ` Product surfaces cite ${a.productSurfaces[0].path}: "${firstSentence(a.productSurfaces[0].text)}".`
+    : "";
+  const what = `${a.repo.name} is ${purpose}.${surfaceHint} Static analysis detects ${
     a.fileCount
   } files (${formatBytes(a.sizeBytes)}) with primary languages ${
     Object.keys(a.languages).slice(0, 3).join(", ") || "unknown"
   }. ${a.signals.hasFrontend ? "It exposes a runnable frontend. " : ""}${
     a.signals.hasBackend ? "It includes server-side code. " : ""
-  }${a.signals.isLibrary ? "It is consumable as a library. " : ""}This summary is grounded in the repository's manifests and README headings.`;
+  }${a.signals.isLibrary ? "It is consumable as a library. " : ""}This summary is grounded in product surfaces, manifests, and README headings.`;
 
-  const why = a.readme?.rawTrimmed
-    ? `The README opens with: "${
-        firstSentence(a.readme.rawTrimmed)
-      }" — which signals the project's intent. The presence of ${manifestSummary(
-        a,
-      )} corroborates that focus, and entry points such as ${a.entrypoints
-        .slice(0, 2)
-        .join(", ") || "(none recorded)"} reflect the surface available to users.`
-    : `No README narrative was recorded; the project's purpose is inferred from manifests and file layout (${manifestSummary(
-        a,
-      )}). Vision not stated in source.`;
+  const why = a.productSurfaces?.[0]
+    ? `Product identity from ${a.productSurfaces[0].path}: "${firstSentence(
+        a.productSurfaces[0].text,
+      )}". ${
+        a.readme?.rawTrimmed
+          ? `README packaging notes open with: "${firstSentence(a.readme.rawTrimmed)}".`
+          : ""
+      } Manifests (${manifestSummary(a)}) and entry points ${
+        a.entrypoints.slice(0, 2).join(", ") || "(none recorded)"
+      } corroborate the runnable surface.`
+    : a.readme?.rawTrimmed
+      ? `The README opens with: "${firstSentence(
+          a.readme.rawTrimmed,
+        )}" — which signals the project's intent. The presence of ${manifestSummary(
+          a,
+        )} corroborates that focus, and entry points such as ${
+          a.entrypoints.slice(0, 2).join(", ") || "(none recorded)"
+        } reflect the surface available to users.`
+      : `No README narrative was recorded; the project's purpose is inferred from manifests and file layout (${manifestSummary(
+          a,
+        )}). Vision not stated in source.`;
 
   const vision = a.readme?.firstNHeadings?.length
     ? `The README headings (${a.readme.firstNHeadings.slice(0, 4).join(" / ")}) suggest planned scope. Beyond those, vision not stated in source.`
