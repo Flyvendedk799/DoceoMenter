@@ -455,8 +455,15 @@ describe("gemini wire", () => {
     expect(calls[0]!.body.project).toBeUndefined();
   });
 
-  it("sends aicode-consumers in the body only when discovery marks bodyOnlyProjectId", async () => {
+  it("falls back to gemini-3-flash when pro-low returns MALFORMED_FUNCTION_CALL", async () => {
     const { calls, impl } = recorder([
+      {
+        body: {
+          response: {
+            candidates: [{ content: { role: "model", parts: [] }, finishReason: "MALFORMED_FUNCTION_CALL" }],
+          },
+        },
+      },
       {
         body: {
           response: {
@@ -473,6 +480,7 @@ describe("gemini wire", () => {
         },
       },
     ]);
+    const logs: string[] = [];
     const transport = createTransport({
       provider: "gemini-cli",
       credential: {
@@ -484,19 +492,24 @@ describe("gemini wire", () => {
         isDogfood: true,
         source: "account",
       },
-      modelPrimary: "gemini-3.1-pro",
+      modelPrimary: "gemini-3.1-pro-low",
       modelFallback: "gemini-3-flash",
-      logger: () => {},
+      logger: (line) => logs.push(line),
       fetchImpl: impl,
     });
 
-    await transport.start(SYSTEM, [TOOL], 1000).ask("go");
+    const turn = await transport.start(SYSTEM, [TOOL], 1000).ask("go");
 
-    expect(calls[0]!.url).toBe("https://daily-cloudcode-pa.googleapis.com/v1internal:generateContent");
-    expect(calls[0]!.headers["x-goog-user-project"]).toBeUndefined();
-    expect(calls[0]!.body.project).toBe("aicode-consumers");
+    expect(calls).toHaveLength(2);
     expect(calls[0]!.body.model).toBe("gemini-3.1-pro-low");
+    expect(calls[0]!.body.project).toBe("aicode-consumers");
+    expect(calls[0]!.headers["x-goog-user-project"]).toBeUndefined();
+    expect(calls[0]!.body.request.generationConfig.thinkingConfig).toEqual({ thinkingBudget: 1024 });
+    expect(calls[1]!.body.model).toBe("gemini-3-flash");
+    expect(turn.calls).toEqual([{ id: "submit_thing", name: "submit_thing", input: { ok: true } }]);
+    expect(logs.some((l) => /MALFORMED_FUNCTION_CALL|no functionCall/.test(l))).toBe(true);
   });
+
 
   it("explains aicode-consumers 403 as a personal Antigravity reconnect, not enterprise IAM", async () => {
     const { impl } = recorder([

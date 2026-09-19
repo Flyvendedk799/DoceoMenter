@@ -16,7 +16,7 @@ describe("resolveRunModels", () => {
     });
   });
 
-  it("stays on the panel model with no auto-fallback", () => {
+  it("keeps a flash fallback when the panel pins a non-flash Antigravity model", () => {
     expect(
       resolveRunModels({
         wire: "gemini",
@@ -26,7 +26,22 @@ describe("resolveRunModels", () => {
       }),
     ).toEqual({
       primary: "gemini-3.1-pro",
-      fallback: "gemini-3.1-pro",
+      fallback: "gemini-3-flash",
+      fromPanel: true,
+    });
+  });
+
+  it("does not invent a second model when the panel already picked flash", () => {
+    expect(
+      resolveRunModels({
+        wire: "gemini",
+        requestedModel: "gemini-3-flash",
+        configuredPrimary: "gemini-3.1-pro",
+        configuredFallback: "gemini-3-flash",
+      }),
+    ).toEqual({
+      primary: "gemini-3-flash",
+      fallback: "gemini-3-flash",
       fromPanel: true,
     });
   });
