@@ -130,6 +130,9 @@ const ViewportSchema = z.object({
   h: z.number().int().min(240).max(2160),
 });
 
+const DEFAULT_VIEWPORT = { w: 1440, h: 900 } as const;
+const DEFAULT_VIDEO_MS = 8_000;
+
 /**
  * Shot ids become on-disk filenames and are interpolated into HTML/Markdown
  * asset references, so they must be restricted to a path- and markup-safe
@@ -141,18 +144,91 @@ export const ShotIdSchema = z
   .max(64)
   .regex(/^[A-Za-z0-9._-]+$/, "shot id must match [A-Za-z0-9._-]");
 
+const ImportanceSchema = z.union([z.literal(1), z.literal(2), z.literal(3)]);
+
+/**
+ * Coerce quirks common from Antigravity / Gemini tool JSON before Zod:
+ * stringy numbers, omitted viewport / maxDurationMs (optional in the tool schema
+ * the model sees), and slightly messy shot ids. Without this, unions collapse to
+ * a useless "Invalid input" (ServerHoster run ca2585f3357f).
+ */
+export function normalizeShotInput(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
+  const s: Record<string, unknown> = { ...(raw as Record<string, unknown>) };
+
+  if (typeof s.id === "string") {
+    const cleaned = s.id
+      .trim()
+      .replace(/[^A-Za-z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 64);
+    s.id = cleaned.length > 0 ? cleaned : "shot";
+  }
+
+  if (typeof s.importance === "string" && /^\d+$/.test(s.importance.trim())) {
+    s.importance = Number(s.importance.trim());
+  }
+  if (typeof s.importance === "number" && Number.isFinite(s.importance)) {
+    s.importance = Math.min(3, Math.max(1, Math.round(s.importance)));
+  }
+  if (s.importance === undefined || s.importance === null) {
+    s.importance = 2;
+  }
+
+  if (s.viewport && typeof s.viewport === "object" && !Array.isArray(s.viewport)) {
+    const v = { ...(s.viewport as Record<string, unknown>) };
+    if (typeof v.w === "string" && v.w.trim() !== "") v.w = Number(v.w);
+    if (typeof v.h === "string" && v.h.trim() !== "") v.h = Number(v.h);
+    s.viewport = v;
+  }
+
+  if (s.kind === "screenshot" && s.target === "live-app" && (s.viewport === undefined || s.viewport === null)) {
+    s.viewport = { ...DEFAULT_VIEWPORT };
+  }
+
+  if (typeof s.maxDurationMs === "string" && s.maxDurationMs.trim() !== "") {
+    s.maxDurationMs = Number(s.maxDurationMs);
+  }
+  if (s.kind === "video" && (s.maxDurationMs === undefined || s.maxDurationMs === null)) {
+    s.maxDurationMs = DEFAULT_VIDEO_MS;
+  }
+
+  const coerceInteractions = (list: unknown): unknown => {
+    if (!Array.isArray(list)) return list;
+    return list.map((item) => {
+      if (!item || typeof item !== "object") return item;
+      const it = { ...(item as Record<string, unknown>) };
+      if (typeof it.ms === "string" && it.ms.trim() !== "") it.ms = Number(it.ms);
+      return it;
+    });
+  };
+  if (s.interactions !== undefined) s.interactions = coerceInteractions(s.interactions);
+  if (s.script !== undefined) s.script = coerceInteractions(s.script);
+
+  return s;
+}
+
+export function normalizeCapturePlanInput(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
+  const o = { ...(raw as Record<string, unknown>) };
+  if (Array.isArray(o.shots)) {
+    o.shots = o.shots.map(normalizeShotInput);
+  }
+  return o;
+}
+
 export const ShotSchema = z.union([
   z.object({
     id: ShotIdSchema,
     kind: z.literal("screenshot"),
     target: z.literal("live-app"),
     route: z.string(),
-    viewport: ViewportSchema,
+    viewport: ViewportSchema.default(DEFAULT_VIEWPORT),
     waitFor: z.string().optional(),
     interactions: z.array(InteractionSchema).optional(),
     fullPage: z.boolean().optional(),
     caption: z.string(),
-    importance: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+    importance: ImportanceSchema,
   }),
   z.object({
     id: ShotIdSchema,
@@ -160,7 +236,7 @@ export const ShotSchema = z.union([
     target: z.literal("github-readme"),
     section: z.string().optional(),
     caption: z.string(),
-    importance: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+    importance: ImportanceSchema,
   }),
   z.object({
     id: ShotIdSchema,
@@ -170,7 +246,7 @@ export const ShotSchema = z.union([
       mermaid: z.string().min(10),
     }),
     caption: z.string(),
-    importance: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+    importance: ImportanceSchema,
   }),
   z.object({
     id: ShotIdSchema,
@@ -178,13 +254,16 @@ export const ShotSchema = z.union([
     target: z.literal("live-app"),
     route: z.string(),
     script: z.array(InteractionSchema).min(1),
-    maxDurationMs: z.number().int().min(2000).max(30_000),
+    maxDurationMs: z.number().int().min(2000).max(30_000).default(DEFAULT_VIDEO_MS),
     caption: z.string(),
   }),
 ]);
 export type Shot = z.infer<typeof ShotSchema>;
 
-export const CapturePlanSchema = z.object({ shots: z.array(ShotSchema).min(1).max(10) });
+export const CapturePlanSchema = z.preprocess(
+  normalizeCapturePlanInput,
+  z.object({ shots: z.array(ShotSchema).min(1).max(10) }),
+);
 export type CapturePlan = z.infer<typeof CapturePlanSchema>;
 
 export const ConceptSchema = z.object({

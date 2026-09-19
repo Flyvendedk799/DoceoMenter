@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  CapturePlanSchema,
   GitRefSchema,
   RunSpecSchema,
   ShotIdSchema,
@@ -49,6 +50,52 @@ describe("ShotSchema viewport bounds", () => {
       importance: 1,
     };
     expect(ShotSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it("defaults viewport when omitted on live-app screenshots via CapturePlanSchema", () => {
+    const plan = CapturePlanSchema.safeParse({
+      shots: [
+        {
+          id: "home",
+          kind: "screenshot",
+          target: "live-app",
+          route: "/",
+          caption: "Landing page",
+          importance: "2",
+        },
+      ],
+    });
+    expect(plan.success).toBe(true);
+    if (plan.success) {
+      expect(plan.data.shots[0]).toMatchObject({
+        viewport: { w: 1440, h: 900 },
+        importance: 2,
+      });
+    }
+  });
+
+  it("defaults maxDurationMs and coerces stringy video fields", () => {
+    const plan = CapturePlanSchema.safeParse({
+      shots: [
+        {
+          id: "tour of the app!",
+          kind: "video",
+          target: "live-app",
+          route: "/demo",
+          script: [{ do: "wait", ms: "500" }],
+          caption: "Walkthrough",
+        },
+      ],
+    });
+    expect(plan.success).toBe(true);
+    if (plan.success) {
+      const shot = plan.data.shots[0]!;
+      expect(shot.id).toBe("tour-of-the-app");
+      expect(shot).toMatchObject({ kind: "video", maxDurationMs: 8000 });
+      if (shot.kind === "video") {
+        expect(shot.script[0]).toEqual({ do: "wait", ms: 500 });
+      }
+    }
   });
 });
 

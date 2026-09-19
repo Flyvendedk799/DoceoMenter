@@ -197,11 +197,17 @@ function createGeneratingClient(transport: Transport, log: (line: string) => voi
         }
         const res = spec.schema.safeParse(collected.get(spec.name));
         if (!res.success) {
+          const issue = res.error.issues[0];
+          const path = issue?.path?.length ? ` (${issue.path.join(".")})` : "";
+          const detail = `${issue?.message ?? "invalid"}${path}`;
+          log(
+            `[${label}] invalid ${spec.name}: ${detail} payload=${JSON.stringify(
+              collected.get(spec.name),
+            ).slice(0, 600)}`,
+          );
           // Drop the invalid payload so a corrected re-call can replace it.
           collected.delete(spec.name);
-          problems.push(
-            `'${spec.name}' had invalid arguments: ${res.error.issues[0]?.message ?? "invalid"}`,
-          );
+          problems.push(`'${spec.name}' had invalid arguments: ${detail}`);
         }
       }
       // If every required tool is present and valid we are done — a trailing
