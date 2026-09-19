@@ -10,7 +10,7 @@ importers:
     dependencies:
       '@flyvendedk799/ai-auth':
         specifier: github:Flyvendedk799/ai-auth#main
-        version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/e72d4b8b4e216538aa748cd66086973a5e096965(react@18.3.1)
+        version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/30882f22f9eac0bd62f33610a61af7eba98f8536(react@18.3.1)
     devDependencies:
       '@types/node':
         specifier: 22.9.0
@@ -38,7 +38,7 @@ importers:
         version: link:../worker
       '@flyvendedk799/ai-auth':
         specifier: github:Flyvendedk799/ai-auth#main
-        version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/e72d4b8b4e216538aa748cd66086973a5e096965(react@18.3.1)
+        version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/30882f22f9eac0bd62f33610a61af7eba98f8536(react@18.3.1)
       bullmq:
         specifier: 5.34.10
         version: 5.34.10
@@ -105,7 +105,7 @@ importers:
         version: link:../../packages/shared
       '@flyvendedk799/ai-auth':
         specifier: github:Flyvendedk799/ai-auth#main
-        version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/e72d4b8b4e216538aa748cd66086973a5e096965(react@18.3.1)
+        version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/30882f22f9eac0bd62f33610a61af7eba98f8536(react@18.3.1)
       bullmq:
         specifier: 5.34.10
         version: 5.34.10
@@ -136,7 +136,7 @@ importers:
     dependencies:
       '@flyvendedk799/ai-auth':
         specifier: github:Flyvendedk799/ai-auth#main
-        version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/e72d4b8b4e216538aa748cd66086973a5e096965(react@18.3.1)
+        version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/30882f22f9eac0bd62f33610a61af7eba98f8536(react@18.3.1)
     devDependencies:
       '@types/node':
         specifier: 22.9.0
@@ -155,7 +155,7 @@ importers:
         version: link:../shared
       '@flyvendedk799/ai-auth':
         specifier: github:Flyvendedk799/ai-auth#main
-        version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/e72d4b8b4e216538aa748cd66086973a5e096965(react@18.3.1)
+        version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/30882f22f9eac0bd62f33610a61af7eba98f8536(react@18.3.1)
       execa:
         specifier: 9.5.1
         version: 9.5.1
@@ -174,7 +174,7 @@ importers:
         version: link:../shared
       '@flyvendedk799/ai-auth':
         specifier: github:Flyvendedk799/ai-auth#main
-        version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/e72d4b8b4e216538aa748cd66086973a5e096965(react@18.3.1)
+        version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/30882f22f9eac0bd62f33610a61af7eba98f8536(react@18.3.1)
       execa:
         specifier: 9.5.1
         version: 9.5.1
@@ -205,7 +205,7 @@ importers:
         version: link:../shared
       '@flyvendedk799/ai-auth':
         specifier: github:Flyvendedk799/ai-auth#main
-        version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/e72d4b8b4e216538aa748cd66086973a5e096965(react@18.3.1)
+        version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/30882f22f9eac0bd62f33610a61af7eba98f8536(react@18.3.1)
       zod:
         specifier: 3.25.76
         version: 3.25.76
@@ -224,7 +224,7 @@ importers:
         version: link:../shared
       '@flyvendedk799/ai-auth':
         specifier: github:Flyvendedk799/ai-auth#main
-        version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/e72d4b8b4e216538aa748cd66086973a5e096965(react@18.3.1)
+        version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/30882f22f9eac0bd62f33610a61af7eba98f8536(react@18.3.1)
       playwright:
         specifier: 1.56.1
         version: 1.56.1
@@ -240,7 +240,7 @@ importers:
     dependencies:
       '@flyvendedk799/ai-auth':
         specifier: github:Flyvendedk799/ai-auth#main
-        version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/e72d4b8b4e216538aa748cd66086973a5e096965(react@18.3.1)
+        version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/30882f22f9eac0bd62f33610a61af7eba98f8536(react@18.3.1)
       zod:
         specifier: 3.25.76
         version: 3.25.76
@@ -256,7 +256,7 @@ importers:
     dependencies:
       '@flyvendedk799/ai-auth':
         specifier: github:Flyvendedk799/ai-auth#main
-        version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/e72d4b8b4e216538aa748cd66086973a5e096965(react@18.3.1)
+        version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/30882f22f9eac0bd62f33610a61af7eba98f8536(react@18.3.1)
     devDependencies:
       '@playwright/test':
         specifier: 1.56.1
@@ -266,25 +266,25 @@ importers:
     dependencies:
       '@flyvendedk799/ai-auth':
         specifier: github:Flyvendedk799/ai-auth#main
-        version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/e72d4b8b4e216538aa748cd66086973a5e096965(react@18.3.1)
+        version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/30882f22f9eac0bd62f33610a61af7eba98f8536(react@18.3.1)
 
   tests/fixtures/node-cli:
     dependencies:
       '@flyvendedk799/ai-auth':
         specifier: github:Flyvendedk799/ai-auth#main
-        version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/e72d4b8b4e216538aa748cd66086973a5e096965(react@18.3.1)
+        version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/30882f22f9eac0bd62f33610a61af7eba98f8536(react@18.3.1)
 
   tests/fixtures/static-site:
     dependencies:
       '@flyvendedk799/ai-auth':
         specifier: github:Flyvendedk799/ai-auth#main
-        version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/e72d4b8b4e216538aa748cd66086973a5e096965(react@18.3.1)
+        version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/30882f22f9eac0bd62f33610a61af7eba98f8536(react@18.3.1)
 
   tests/fixtures/vite-app:
     dependencies:
       '@flyvendedk799/ai-auth':
         specifier: github:Flyvendedk799/ai-auth#main
-        version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/e72d4b8b4e216538aa748cd66086973a5e096965(react@18.3.1)
+        version: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/30882f22f9eac0bd62f33610a61af7eba98f8536(react@18.3.1)
     devDependencies:
       vite:
         specifier: 5.4.10
@@ -594,8 +594,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@flyvendedk799/ai-auth@https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/e72d4b8b4e216538aa748cd66086973a5e096965':
-    resolution: {tarball: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/e72d4b8b4e216538aa748cd66086973a5e096965}
+  '@flyvendedk799/ai-auth@https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/30882f22f9eac0bd62f33610a61af7eba98f8536':
+    resolution: {tarball: https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/30882f22f9eac0bd62f33610a61af7eba98f8536}
     version: 0.9.0
     engines: {node: '>=20'}
     peerDependencies:
@@ -2013,7 +2013,7 @@ snapshots:
   '@esbuild/win32-x64@0.23.1':
     optional: true
 
-  '@flyvendedk799/ai-auth@https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/e72d4b8b4e216538aa748cd66086973a5e096965(react@18.3.1)':
+  '@flyvendedk799/ai-auth@https://codeload.github.com/Flyvendedk799/ai-auth/tar.gz/30882f22f9eac0bd62f33610a61af7eba98f8536(react@18.3.1)':
     optionalDependencies:
       react: 18.3.1
 
