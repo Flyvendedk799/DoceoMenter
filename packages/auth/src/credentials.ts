@@ -55,6 +55,7 @@ export type ProviderCredential =
        */
       projectId: string | null;
       plan: string | null;
+      isDogfood?: boolean;
       source: "account" | "local-cli";
     };
 
@@ -179,6 +180,7 @@ async function resolveGeminiSubscription(
         accessToken: await runtime.geminiAccounts.token(options.accountId),
         projectId: status.projectId,
         plan: status.email,
+          isDogfood: status.isDogfood,
         source: "account",
       };
     }

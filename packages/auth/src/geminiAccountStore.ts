@@ -38,6 +38,7 @@ export interface GeminiAccountStatus {
   expired: boolean;
   /** A GCP project id, if the user supplied one. Not every license needs it. */
   projectId: string | null;
+  isDogfood: boolean;
 }
 
 export interface GeminiAccountStoreOptions {
@@ -56,6 +57,7 @@ const DISCONNECTED: GeminiAccountStatus = {
   expiresAt: null,
   expired: false,
   projectId: null,
+  isDogfood: false,
 };
 
 export class GeminiAccountStore {
@@ -125,6 +127,7 @@ export class GeminiAccountStore {
       email: typeof record.meta.email === "string" ? record.meta.email : null,
       expiresAt,
       expired: expiresAt - EXPIRY_BUFFER_MS <= now,
+      isDogfood: record.meta.isDogfood === 1,
       projectId: typeof record.meta.projectId === "string" ? record.meta.projectId : null,
     };
   }
