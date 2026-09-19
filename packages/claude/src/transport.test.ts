@@ -414,4 +414,84 @@ describe("gemini wire", () => {
     expect(calls[0]!.body.project).toBeUndefined();
     expect(calls[0]!.body.userAgent).toBe("antigravity");
   });
+
+  it("strips enterprise aicode-consumers before Cloud Code generateContent", async () => {
+    const { calls, impl } = recorder([
+      {
+        body: {
+          response: {
+            candidates: [
+              {
+                content: {
+                  role: "model",
+                  parts: [{ functionCall: { name: "submit_thing", args: { ok: true } } }],
+                },
+                finishReason: "STOP",
+              },
+            ],
+          },
+        },
+      },
+    ]);
+    const transport = createTransport({
+      provider: "gemini-cli",
+      credential: {
+        kind: "subscription",
+        wire: "gemini",
+        accessToken: "gcli-token",
+        projectId: "aicode-consumers",
+        isDogfood: false,
+        source: "account",
+      },
+      modelPrimary: "gemini-3.1-pro",
+      modelFallback: "gemini-3-flash",
+      logger: () => {},
+      fetchImpl: impl,
+    });
+
+    await transport.start(SYSTEM, [TOOL], 1000).ask("go");
+
+    expect(calls[0]!.headers["x-goog-user-project"]).toBeUndefined();
+    expect(calls[0]!.body.project).toBeUndefined();
+  });
+
+  it("explains aicode-consumers 403 as a personal Antigravity reconnect, not enterprise IAM", async () => {
+    const { impl } = recorder([
+      {
+        status: 403,
+        body: {
+          error: {
+            message:
+              "Caller does not have required permission to use project aicode-consumers. Grant the caller the roles/serviceusage.serviceUsageConsumer role",
+          },
+        },
+      },
+    ]);
+    const transport = createTransport({
+      provider: "gemini-cli",
+      credential: {
+        kind: "subscription",
+        wire: "gemini",
+        accessToken: "gcli-token",
+        projectId: "aicode-consumers",
+        isDogfood: false,
+        source: "account",
+      },
+      modelPrimary: "gemini-3.1-pro",
+      modelFallback: "gemini-3-flash",
+      logger: () => {},
+      fetchImpl: impl,
+      configureAt: "the provider panel",
+    });
+
+    let message = "";
+    try {
+      await transport.start(SYSTEM, [TOOL], 1000).ask("go");
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toMatch(/personal Google AI|machine Antigravity|`agy`/i);
+    expect(message).toMatch(/aicode-consumers/);
+    expect(message).not.toMatch(/contact your administrator/i);
+  });
 });

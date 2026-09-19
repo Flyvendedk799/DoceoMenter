@@ -17,6 +17,7 @@ import { join } from "node:path";
 import { readFile } from "node:fs/promises";
 import { ClaudeCodeCredential, CodexCredential, decodeJwtClaims, type CodexIdentity } from "@flyvendedk799/ai-auth";
 import type { KeySource, ProviderId } from "@flyvendedk799/ai-auth";
+import { sanitizePersonalCloudCodeProject } from "@doceomenter/shared";
 import { refreshGeminiToken, type GeminiOAuthIdentity } from "./geminiOAuth.js";
 import { CodeAssistSetupError, ensureCodeAssistProject } from "./codeAssist.js";
 import { describeProvider } from "./providers.js";
@@ -50,9 +51,8 @@ export type ProviderCredential =
       kind: "subscription";
       accessToken: string;
       /**
-       * A GCP project id, when the account's license needs one — `loadCodeAssist` calls this
-       * `userDefinedCloudaicompanionProject`. Nothing in the OAuth token reveals one; it is
-       * either what the account typed into the panel or `GEMINI_PROJECT_ID` on the server.
+       * A personal GCP / managed Cloud Code project id, when one is known.
+       * Never Google's enterprise shared project `aicode-consumers`.
        */
       projectId: string | null;
       plan: string | null;
@@ -161,18 +161,16 @@ async function resolveCodexSubscription(
 }
 
 /**
- * A Gemini subscription, via Antigravity CLI's OAuth — same two-tier shape as Claude: the
- * account's own connected login first, the machine's own `agy` login second.
+ * A Gemini / Antigravity subscription — same two-tier shape as Claude: the account's own
+ * connected login first, the machine's own Antigravity (`agy`) login second.
  *
- * There is no third, deployment-wide fallback the way the metered providers have one, and no
- * "OAuth is unreachable here, only machine login" carve-out the way it briefly was — see
- * `geminiOAuth.ts`'s header for how the browser flow became possible.
+ * There is no third, deployment-wide fallback the way the metered providers have one.
  *
- * Important difference from Claude when a *browser account id* is present: never fall through
- * to the host's `agy` login. A visitor who opened the provider panel is paying with *their*
- * Google account; silently spending the VPS operator's machine login (often on the wrong
- * Prod/Dogfood endpoint) is how #3501 shows up as "agy on the server was rejected" while
- * the UI looked connected — or worse, while the UI was never asked to connect at all.
+ * Browser visitors always have an account cookie (minted on first hit). That must *not*
+ * block the machine login the way an earlier #3501 workaround did — Claude falls through
+ * to `claude` on the host when the panel is not connected; Antigravity does the same with
+ * `agy`. Forcing provider-panel Google OAuth is how personal accounts got routed onto
+ * enterprise project `aicode-consumers` and failed with serviceUsageConsumer 403s.
  */
 async function resolveGeminiSubscription(
   options: ResolveOptions,
@@ -202,10 +200,7 @@ async function resolveGeminiSubscription(
         source: "account",
       };
     }
-    throw new CredentialError(
-      "No Gemini subscription is connected for this browser. Open the provider panel, choose Gemini subscription, and Connect with Google (check G1 Dogfood if that is where your license lives). The machine `agy` login on the server is not used for browser runs.",
-      "gemini-cli",
-    );
+    // Fall through to machine Antigravity — same as Claude when the panel is empty.
   }
 
   if (runtime.config.allowLocalCli) {
@@ -232,30 +227,37 @@ async function resolveGeminiSubscription(
   }
 
   throw new CredentialError(
-    "No Gemini subscription is connected. Sign in from the provider panel, or pick the Gemini API key provider instead.",
+    "No Antigravity login is connected. Run `agy` on the machine hosting DoceoMenter and sign in with your personal Google AI account, or Connect Antigravity from the provider panel.",
     "gemini-cli",
   );
 }
 
 /**
  * Ask Cloud Code for the managed project id `agy` would discover via loadCodeAssist/onboardUser.
- * Without it, flagship models often answer #3501 even with a valid OAuth token.
+ * Without a usable personal project, flagship models often answer #3501 even with a valid token.
+ * Enterprise shared project `aicode-consumers` is never kept or sent.
  */
 async function resolveManagedProject(input: {
   accessToken: string;
   isDogfood?: boolean;
   projectId: string | null;
   options: ResolveOptions;
-  persist?: (projectId: string) => Promise<void>;
+  persist?: (projectId: string | null) => Promise<void>;
 }): Promise<string | null> {
+  const cleanedStored = sanitizePersonalCloudCodeProject(input.projectId);
+  // Drop a previously persisted enterprise project so the next status read is honest.
+  if (input.projectId && !cleanedStored && input.persist) {
+    await input.persist(null);
+  }
+
   try {
     const resolved = await ensureCodeAssistProject({
       accessToken: input.accessToken,
       isDogfood: input.isDogfood,
-      projectId: input.projectId,
+      projectId: cleanedStored,
       ...(input.options.fetchImpl ? { fetchImpl: input.options.fetchImpl } : {}),
     });
-    // Soft-fail paths return null (TOS / Dogfood skip / HTTP error). Only persist a real id.
+    // Soft-fail paths return null (TOS / Dogfood skip / enterprise project / HTTP error).
     if (resolved && input.persist && resolved !== input.projectId) {
       await input.persist(resolved);
     }
@@ -399,7 +401,7 @@ class AntigravityLocalCredential {
     const identity = await this.read();
     if (!identity) {
       throw new CredentialError(
-        "No Antigravity CLI login found on this machine. Run `agy` there and sign in with Google, then reload.",
+        "No Antigravity CLI login found on this machine. Run `agy` there and sign in with your personal Google AI account, then reload.",
         "gemini-cli",
       );
     }
@@ -410,7 +412,7 @@ class AntigravityLocalCredential {
 
     if (!identity.refreshToken) {
       throw new CredentialError(
-        "The Antigravity CLI login on this machine has expired and has no refresh token. Run `agy` there to sign in again.",
+        "The Antigravity CLI login on this machine has expired and has no refresh token. Run `agy` there to sign in again with your personal Google AI account.",
         "gemini-cli",
       );
     }

@@ -26,8 +26,11 @@ import {
   withClaudeCodeIdentity,
 } from "@flyvendedk799/ai-auth";
 import { describeProviderError, providerErrorFacts, type ProviderId } from "@flyvendedk799/ai-auth/registry";
-import { antigravityRequestHeaders, cloudCodeBaseUrl } from "@doceomenter/shared";
-
+import {
+  antigravityRequestHeaders,
+  cloudCodeBaseUrl,
+  sanitizePersonalCloudCodeProject,
+} from "@doceomenter/shared";
 export type Tool = Anthropic.Messages.Tool;
 export type SystemBlock = { type: "text"; text: string; cache_control?: { type: "ephemeral" } };
 
@@ -128,22 +131,35 @@ function fail(error: unknown, options: TransportOptions, model: string): never {
     ...(options.configureAt ? { configureAt: options.configureAt } : {}),
   });
 
-  // ai-auth's gemini-cli 401/403 copy always blames the machine `agy` login. Browser runs use
-  // the panel credential instead — say that, or the user goes and re-runs `agy` on the VPS.
+  // Antigravity 401/403: personal Google AI users need machine `agy` / reconnect copy — never
+  // enterprise IAM instructions for `aicode-consumers` as the happy path.
   if (
     options.provider === "gemini-cli" &&
     (facts.status === 401 || facts.status === 403) &&
     options.credential.kind === "subscription" &&
-    options.credential.wire === "gemini" &&
-    options.credential.source === "account"
+    options.credential.wire === "gemini"
   ) {
     const detail = facts.detail ? ` (The provider said: ${facts.detail})` : "";
     const at = options.configureAt ? ` in ${options.configureAt}` : "";
-    described =
-      `Google rejected the Gemini subscription connected${at || " in the provider panel"} for \`${model}\`. ` +
-      `Disconnect and Connect with Google again there` +
-      `${options.credential.isDogfood ? " (Dogfood is already selected on this credential)" : " — if your license is on G1 Dogfood, check that box before connecting"}` +
-      `. This run is not using the machine \`agy\` login.${detail}`;
+    const enterpriseProject = /aicode-consumers|serviceusage\.serviceUsageConsumer/i.test(
+      facts.detail ?? "",
+    );
+    if (enterpriseProject) {
+      described =
+        `Google refused Antigravity for \`${model}\` because the request targeted the enterprise ` +
+        `consumer project \`aicode-consumers\`, which personal Google AI subscriptions cannot use. ` +
+        `Disconnect any provider-panel Google connect, run \`agy\` on this machine with your personal ` +
+        `Google AI account, then retry — DoceoMenter will not send that project for personal logins.${detail}`;
+    } else if (options.credential.source === "account") {
+      described =
+        `Google rejected the Antigravity account connected${at || " in the provider panel"} for \`${model}\`. ` +
+        `For a personal Google AI plan, prefer the machine Antigravity login: run \`agy\` on the host, ` +
+        `Disconnect the panel Google connect if it is set, then retry.${detail}`;
+    } else if (options.credential.source === "local-cli") {
+      described =
+        `Google rejected the machine Antigravity (\`agy\`) login for \`${model}\`. ` +
+        `Run \`agy\` on the host and sign in again with the Google account that holds your personal Google AI subscription.${detail}`;
+    }
   }
 
   const message = described ?? `[${options.provider}] ${(error as Error)?.message ?? "call failed"}`;
@@ -465,11 +481,13 @@ function geminiTransport(options: TransportOptions): Transport {
     ? (credential as Extract<WireCredential, { kind: "subscription"; wire: "gemini" }>)
     : null;
 
+  const personalProjectId = sanitizePersonalCloudCodeProject(geminiSub?.projectId ?? null);
+
   const cli = geminiSub
     ? antigravityCliOptions(
         {
           accessToken: geminiSub.accessToken,
-          projectId: geminiSub.projectId,
+          projectId: personalProjectId,
           refreshToken: null,
           expiresAt: 0,
           email: null,
@@ -501,7 +519,7 @@ function geminiTransport(options: TransportOptions): Transport {
           };
 
           const json = await withFallback(options, (m) => (model = m), async (m) => {
-            const projectId = geminiSub?.projectId ?? null;
+            const projectId = personalProjectId;
 
             const response = geminiSub
               ? await doFetch(`${cli.baseURL}:generateContent`, {

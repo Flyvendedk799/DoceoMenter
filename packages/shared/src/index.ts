@@ -13,8 +13,10 @@ export {
   CLOUD_CODE_DOGFOOD_BASE_URL,
   CLOUD_CODE_PROD_BASE_URL,
   CLOUD_CODE_SANDBOX_BASE_URL,
+  GOOGLE_ENTERPRISE_CLOUD_CODE_PROJECT,
   antigravityLoadHeaders,
   antigravityRequestHeaders,
   cloudCodeBaseUrl,
   cloudCodeDiscoveryHosts,
+  sanitizePersonalCloudCodeProject,
 } from "./antigravityIdentity.js";

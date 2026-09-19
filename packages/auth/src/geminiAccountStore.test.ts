@@ -50,6 +50,15 @@ describe("GeminiAccountStore", () => {
     expect(await store.status("account-1")).toMatchObject({ projectId: "my-gcp-project" });
   });
 
+  it("refuses to store Google's enterprise aicode-consumers project", async () => {
+    const store = storeIn(() => 0);
+    await store.save("account-1", { ...identity, expiresAt: 3_600_000 }, "aicode-consumers");
+    expect(await store.status("account-1")).toMatchObject({ projectId: null });
+
+    await store.setProjectId("account-1", "aicode-consumers");
+    expect(await store.status("account-1")).toMatchObject({ projectId: null });
+  });
+
   it("refreshes an aged-out token and writes the result back", async () => {
     let now = 0;
     const calls: URLSearchParams[] = [];

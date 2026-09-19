@@ -1,13 +1,17 @@
 /**
- * Resolve the managed Cloud Code project the way `agy` does.
+ * Resolve the managed Cloud Code project the way Antigravity (`agy`) does.
  *
- * Personal / Google One accounts never type a GCP project id. `agy` POSTs `loadCodeAssist`
- * with `{ metadata: { ideType: "ANTIGRAVITY" } }` and, if needed, `onboardUser` with snake_case
- * metadata, then uses `cloudaicompanionProject`.
+ * Personal Google AI / Google One accounts never type a GCP project id. `agy` POSTs
+ * `loadCodeAssist` with `{ metadata: { ideType: "ANTIGRAVITY" } }` and, if needed,
+ * `onboardUser` with snake_case metadata, then uses `cloudaicompanionProject`.
  *
  * Gemini CLI's Code Assist metadata (`pluginType: GEMINI`, `platform: PLATFORM_UNSPECIFIED`)
  * is a different product. Google answers "Client does not support Google TOS" for that shape,
  * which is not a missing license on the account.
+ *
+ * Never accepts Google's enterprise shared project `aicode-consumers` (personal accounts
+ * have no IAM there). Returns null when discovery is refused or yields that project so
+ * `generateContent` can proceed without it.
  */
 
 import {
@@ -15,6 +19,7 @@ import {
   ANTIGRAVITY_ONBOARD_METADATA,
   antigravityLoadHeaders,
   cloudCodeDiscoveryHosts,
+  sanitizePersonalCloudCodeProject,
 } from "@doceomenter/shared";
 
 const FREE_TIER = "free-tier";
@@ -52,10 +57,14 @@ type OnboardUserResponse = {
   response?: { cloudaicompanionProject?: { id?: string; name?: string } | string };
 };
 
+/**
+ * Returns a project id suitable for `x-goog-user-project` / `generateContent.project`,
+ * or null when discovery is refused / unavailable / enterprise-only.
+ */
 export async function ensureCodeAssistProject(
   input: EnsureCodeAssistProjectInput,
 ): Promise<string | null> {
-  const existing = input.projectId?.trim() || null;
+  const existing = sanitizePersonalCloudCodeProject(input.projectId);
   if (existing) return existing;
 
   const doFetch = input.fetchImpl ?? fetch;
@@ -92,8 +101,16 @@ async function discoverOnHost(input: {
     return null;
   }
 
-  const fromLoad = readProjectId(load.cloudaicompanionProject);
+  const fromLoad = sanitizePersonalCloudCodeProject(readProjectId(load.cloudaicompanionProject));
   if (fromLoad) return fromLoad;
+  const rawLoad = readProjectId(load.cloudaicompanionProject);
+  if (rawLoad) {
+    console.error(
+      `[code-assist] loadCodeAssist returned enterprise project ${rawLoad}; ignoring for personal Antigravity`,
+    );
+    // Do not try onboardUser on this host — Google already named a project we cannot use.
+    return null;
+  }
 
   const canOnboard = Boolean(
     load.currentTier ||
@@ -142,7 +159,15 @@ async function discoverOnHost(input: {
     }
   }
 
-  return readProjectId(lro.response?.cloudaicompanionProject);
+  const fromOnboard = sanitizePersonalCloudCodeProject(readProjectId(lro.response?.cloudaicompanionProject));
+  if (fromOnboard) return fromOnboard;
+  const rawOnboard = readProjectId(lro.response?.cloudaicompanionProject);
+  if (rawOnboard) {
+    console.error(
+      `[code-assist] onboardUser returned enterprise project ${rawOnboard}; ignoring for personal Antigravity`,
+    );
+  }
+  return null;
 }
 
 function readProjectId(value: unknown): string | null {

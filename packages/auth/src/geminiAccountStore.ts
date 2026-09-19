@@ -8,14 +8,15 @@
  *   * Google does not name a plan the way a Claude subscription does, so the account's own
  *     email is what a status page shows instead — the thing worth confirming is *which*
  *     Google account is connected, not a tier name Google never sends back.
- *   * The generation backend Antigravity uses needs a GCP project id when the account's
- *     license requires one (`userDefinedCloudaicompanionProject: true` — see `credentials.ts`).
- *     Nothing in the OAuth exchange reveals one, so it is a value the user types in here, kept
- *     beside the tokens rather than derived from them.
+ *   * The generation backend Antigravity uses may need a personal GCP / managed Cloud Code
+ *     project id. Nothing in the OAuth exchange reveals one; it is discovered via
+ *     loadCodeAssist (like `agy`) or typed here. Google's enterprise shared project
+ *     `aicode-consumers` is never stored — personal Google AI has no IAM there.
  */
 
 import { SecretBox } from "@flyvendedk799/ai-auth";
 import type { CredentialStore } from "@flyvendedk799/ai-auth";
+import { sanitizePersonalCloudCodeProject } from "@doceomenter/shared";
 import { refreshGeminiToken, type GeminiOAuthIdentity } from "./geminiOAuth.js";
 
 /** Refresh this far ahead of expiry so a call never races the exchange. */
@@ -79,7 +80,9 @@ export class GeminiAccountStore {
 
   async save(accountId: string, identity: GeminiOAuthIdentity, projectId?: string | null): Promise<void> {
     const existing = await this.options.store.read(this.key(accountId));
-    const keptProjectId = projectId !== undefined ? projectId : (existing?.meta.projectId as string | null | undefined) ?? null;
+    const rawKept =
+      projectId !== undefined ? projectId : (existing?.meta.projectId as string | null | undefined) ?? null;
+    const keptProjectId = sanitizePersonalCloudCodeProject(rawKept);
 
     await this.options.store.write(this.key(accountId), {
       payload: this.box.sealJson({
@@ -97,13 +100,13 @@ export class GeminiAccountStore {
     });
   }
 
-  /** Change the GCP project id without touching the tokens. */
+  /** Change the GCP project id without touching the tokens. Enterprise shared projects are dropped. */
   async setProjectId(accountId: string, projectId: string | null): Promise<void> {
     const record = await this.options.store.read(this.key(accountId));
     if (!record) return;
     await this.options.store.write(this.key(accountId), {
       payload: record.payload,
-      meta: { ...record.meta, projectId: projectId?.trim() || null },
+      meta: { ...record.meta, projectId: sanitizePersonalCloudCodeProject(projectId) },
     });
   }
 
@@ -128,7 +131,9 @@ export class GeminiAccountStore {
       expiresAt,
       expired: expiresAt - EXPIRY_BUFFER_MS <= now,
       isDogfood: record.meta.isDogfood === 1,
-      projectId: typeof record.meta.projectId === "string" ? record.meta.projectId : null,
+      projectId: sanitizePersonalCloudCodeProject(
+        typeof record.meta.projectId === "string" ? record.meta.projectId : null,
+      ),
     };
   }
 

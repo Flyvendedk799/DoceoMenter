@@ -195,4 +195,51 @@ describe("ensureCodeAssistProject", () => {
     ).resolves.toBeNull();
     error.mockRestore();
   });
+
+  it("ignores enterprise shared project aicode-consumers from loadCodeAssist", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    // Prod returns the enterprise project; daily is empty — both hosts must be tried and dropped.
+    const { calls, impl } = recorder([
+      {
+        body: {
+          currentTier: { id: "free-tier" },
+          cloudaicompanionProject: "aicode-consumers",
+        },
+      },
+      { body: {} },
+    ]);
+    await expect(
+      ensureCodeAssistProject({ accessToken: "ya29", isDogfood: false, fetchImpl: impl }),
+    ).resolves.toBeNull();
+    expect(calls.map((c) => c.url)).toEqual([
+      "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist",
+      "https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist",
+    ]);
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it("does not short-circuit on a stored aicode-consumers project id", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { calls, impl } = recorder([
+      {
+        body: {
+          currentTier: { id: "free-tier" },
+          cloudaicompanionProject: "aicode-consumers",
+        },
+      },
+      { body: {} },
+    ]);
+    await expect(
+      ensureCodeAssistProject({
+        accessToken: "ya29",
+        projectId: "aicode-consumers",
+        isDogfood: false,
+        fetchImpl: impl,
+      }),
+    ).resolves.toBeNull();
+    // Must not treat the enterprise id as "already known" — rediscovery runs across hosts.
+    expect(calls.length).toBeGreaterThanOrEqual(1);
+    error.mockRestore();
+  });
 });

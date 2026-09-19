@@ -31,6 +31,29 @@ export const ANTIGRAVITY_ONBOARD_METADATA = {
   ide_name: "antigravity",
 } as const;
 
+/**
+ * Google's shared Cloud Code Assist consumer project.
+ *
+ * `loadCodeAssist` sometimes returns this for personal Google AI / Antigravity accounts.
+ * Personal OAuth tokens have no IAM on it — attaching it as `x-goog-user-project` yields
+ * `roles/serviceusage.serviceUsageConsumer` 403s. Enterprise/team setups may grant access;
+ * DoceoMenter only supports personal Google AI subscriptions, so we never send it.
+ */
+export const GOOGLE_ENTERPRISE_CLOUD_CODE_PROJECT = "aicode-consumers";
+
+/**
+ * Keep only a project id a personal Antigravity login may bill against.
+ * Drops empty values and Google's enterprise shared consumer project.
+ */
+export function sanitizePersonalCloudCodeProject(
+  projectId: string | null | undefined,
+): string | null {
+  const trimmed = typeof projectId === "string" ? projectId.trim() : "";
+  if (!trimmed) return null;
+  if (trimmed === GOOGLE_ENTERPRISE_CLOUD_CODE_PROJECT) return null;
+  return trimmed;
+}
+
 export const CLOUD_CODE_PROD_BASE_URL = "https://cloudcode-pa.googleapis.com/v1internal";
 export const CLOUD_CODE_DAILY_BASE_URL = "https://daily-cloudcode-pa.googleapis.com/v1internal";
 /** @deprecated Alias — G1 uses daily, not sandbox. */

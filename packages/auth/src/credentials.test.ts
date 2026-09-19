@@ -261,16 +261,38 @@ describe("gemini subscription resolution", () => {
   it("fails with an actionable message when nothing is connected", async () => {
     const runtime = await runtimeIn();
     await expect(resolveProviderCredential({ provider: "gemini-cli", runtime })).rejects.toThrow(
-      /No Gemini subscription is connected/,
+      /No Antigravity login is connected/,
     );
   });
 
-  it("does not fall back to the machine agy login when a browser account id is present", async () => {
-    // ALLOW_LOCAL_CLI on: a host may have agy, but a browser run must not silently spend it.
+  it("falls through to machine Antigravity when a browser account id has no panel connect", async () => {
+    // Every visitor gets an account cookie; that must not hide the host `agy` login (Claude-shaped).
     const runtime = await runtimeIn({ ALLOW_LOCAL_CLI: "true" });
     await expect(
       resolveProviderCredential({ provider: "gemini-cli", accountId: "browser-only", runtime }),
-    ).rejects.toThrow(/not used for browser runs/i);
+    ).rejects.toThrow(/No Antigravity login is connected|No Antigravity CLI login found/);
+  });
+
+  it("clears a stored aicode-consumers project and continues without it", async () => {
+    const runtime = await runtimeIn();
+    await runtime.geminiAccounts.save("account-1", { ...identity, isDogfood: false }, "aicode-consumers");
+
+    const credential = await resolveProviderCredential({
+      provider: "gemini-cli",
+      accountId: "account-1",
+      runtime,
+      // Discovery would return the same enterprise project — ensureCodeAssist must drop it.
+      fetchImpl: codeAssistFetch("aicode-consumers"),
+    });
+
+    expect(credential).toMatchObject({
+      kind: "subscription",
+      projectId: null,
+      source: "account",
+    });
+    expect(await runtime.geminiAccounts.status("account-1")).toMatchObject({
+      projectId: null,
+    });
   });
 });
 

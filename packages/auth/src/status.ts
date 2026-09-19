@@ -115,9 +115,8 @@ export async function readAuthStatus(
           expired: geminiAccount.expired,
           projectId: geminiAccount.projectId,
         });
-      } else if (localGemini?.connected && !accountId) {
-        // Machine login only counts when there is no browser session. A visitor with an
-        // account cookie must Connect in the panel — see resolveGeminiSubscription.
+      } else if (localGemini?.connected) {
+        // Same as Claude: a browser account cookie alone does not hide the machine login.
         providers.push({
           ...base,
           ready: true,
