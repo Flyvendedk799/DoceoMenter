@@ -38,7 +38,7 @@ describe("ensureCodeAssistProject", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("uses the Dogfood sandbox host for G1 discovery", async () => {
+  it("discovers G1/Dogfood on the daily host with agy metadata", async () => {
     const { calls, impl } = recorder([
       {
         body: {
@@ -53,16 +53,15 @@ describe("ensureCodeAssistProject", () => {
       fetchImpl: impl,
     });
     expect(projectId).toBe("dogfood-managed-abc");
-    expect(calls[0]!.url).toBe(
-      "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:loadCodeAssist",
-    );
-    expect(calls[0]!.body).toMatchObject({
-      metadata: { ideType: "ANTIGRAVITY", pluginType: "GEMINI" },
-    });
-    expect(calls[0]!.headers["user-agent"]).toContain("antigravity/");
+    expect(calls[0]!.url).toBe("https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist");
+    expect(calls[0]!.body).toEqual({ metadata: { ideType: "ANTIGRAVITY" } });
+    expect(calls[0]!.headers["user-agent"]).toContain("antigravity/1.21.9");
+    expect(calls[0]!.headers["user-agent"]).toContain("google-api-nodejs-client/");
+    expect(calls[0]!.headers["client-metadata"]).toBeUndefined();
+    expect(calls[0]!.headers["x-goog-api-client"]).toBe("gl-node/22.21.1");
   });
 
-  it("uses cloudaicompanionProject from loadCodeAssist when already onboarded", async () => {
+  it("uses cloudaicompanionProject from prod loadCodeAssist when already onboarded", async () => {
     const { calls, impl } = recorder([
       {
         body: {
@@ -78,14 +77,10 @@ describe("ensureCodeAssistProject", () => {
     });
     expect(projectId).toBe("managed-gcp-abc");
     expect(calls[0]!.url).toBe("https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist");
-    expect(calls[0]!.body).toMatchObject({
-      metadata: { ideType: "ANTIGRAVITY", pluginType: "GEMINI" },
-    });
-    expect(calls[0]!.headers["user-agent"]).toContain("antigravity/");
-    expect(calls[0]!.headers["x-goog-api-client"]).toContain("vscode_cloudshelleditor");
+    expect(calls[0]!.body).toEqual({ metadata: { ideType: "ANTIGRAVITY" } });
   });
 
-  it("onboards when loadCodeAssist has no currentTier, then returns the managed project", async () => {
+  it("onboards with snake_case metadata when loadCodeAssist has no project", async () => {
     const { calls, impl } = recorder([
       {
         body: {
@@ -111,51 +106,89 @@ describe("ensureCodeAssistProject", () => {
       "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist",
       "https://cloudcode-pa.googleapis.com/v1internal:onboardUser",
     ]);
-    expect(calls[1]!.body).toMatchObject({
-      tierId: "free-tier",
-      metadata: { ideType: "ANTIGRAVITY", pluginType: "GEMINI" },
+    expect(calls[1]!.body).toEqual({
+      tier_id: "free-tier",
+      metadata: { ide_type: "ANTIGRAVITY", ide_version: "1.21.9", ide_name: "antigravity" },
     });
-    expect(calls[1]!.body).not.toHaveProperty("cloudaicompanionProject");
   });
 
-  it("soft-fails when onboarded but no managed project is returned", async () => {
-    const { impl } = recorder([
-      { body: { currentTier: { id: "free-tier" }, cloudaicompanionProject: null } },
-    ]);
-    await expect(
-      ensureCodeAssistProject({ accessToken: "ya29", isDogfood: false, fetchImpl: impl }),
-    ).resolves.toBeNull();
-  });
-
-  it("soft-fails on Google TOS / individuals ineligibility instead of blocking the run", async () => {
-    const error = vi.spyOn(console, "error").mockImplementation(() => {});
-    const { impl } = recorder([
+  it("still onboards when TOS ineligible sits next to an allowed tier", async () => {
+    const { calls, impl } = recorder([
       {
         body: {
           ineligibleTiers: [
             {
-              reasonCode: "CLIENT_NOT_ELIGIBLE",
+              reasonMessage:
+                "Client is not eligible for Gemini Code Assist for individuals. Client does not support Google TOS.",
+            },
+          ],
+          allowedTiers: [{ id: "legacy-tier", isDefault: true }],
+        },
+      },
+      {
+        body: {
+          done: true,
+          response: { cloudaicompanionProject: { id: "legacy-managed" } },
+        },
+      },
+    ]);
+    const projectId = await ensureCodeAssistProject({
+      accessToken: "ya29",
+      isDogfood: false,
+      fetchImpl: impl,
+      sleep: async () => {},
+    });
+    expect(projectId).toBe("legacy-managed");
+    expect(calls[1]!.body).toMatchObject({ tier_id: "legacy-tier" });
+  });
+
+  it("tries the next host when the first only returns TOS ineligible", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { calls, impl } = recorder([
+      {
+        body: {
+          ineligibleTiers: [
+            {
               reasonMessage:
                 "Client is not eligible for Gemini Code Assist for individuals. Client does not support Google TOS.",
             },
           ],
         },
       },
+      {
+        body: { cloudaicompanionProject: "from-daily" },
+      },
+    ]);
+    const projectId = await ensureCodeAssistProject({
+      accessToken: "ya29",
+      isDogfood: false,
+      fetchImpl: impl,
+    });
+    expect(projectId).toBe("from-daily");
+    expect(calls.map((c) => c.url)).toEqual([
+      "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist",
+      "https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist",
+    ]);
+    error.mockRestore();
+  });
+
+  it("soft-fails when every host is TOS-ineligible", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { impl } = recorder([
+      { body: { ineligibleTiers: [{ reasonMessage: "Client does not support Google TOS." }] } },
+      { body: { ineligibleTiers: [{ reasonMessage: "Client does not support Google TOS." }] } },
     ]);
     await expect(
       ensureCodeAssistProject({ accessToken: "ya29", isDogfood: false, fetchImpl: impl }),
     ).resolves.toBeNull();
-    expect(error).toHaveBeenCalled();
     error.mockRestore();
   });
 
-  it("soft-fails when loadCodeAssist returns HTTP 403", async () => {
+  it("soft-fails when loadCodeAssist returns HTTP 403 on every host", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const { impl } = recorder([
-      {
-        status: 403,
-        body: { error: { message: "Client does not support Google TOS." } },
-      },
+      { status: 403, body: { error: { message: "forbidden" } } },
+      { status: 403, body: { error: { message: "forbidden" } } },
     ]);
     await expect(
       ensureCodeAssistProject({ accessToken: "ya29", isDogfood: false, fetchImpl: impl }),

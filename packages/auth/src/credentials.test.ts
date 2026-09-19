@@ -214,7 +214,7 @@ describe("gemini subscription resolution", () => {
     });
   });
 
-  it("persists a managed project discovered via Dogfood sandbox loadCodeAssist", async () => {
+  it("persists a managed project discovered via Dogfood daily loadCodeAssist", async () => {
     const runtime = await runtimeIn();
     await runtime.geminiAccounts.save("account-1", { ...identity, isDogfood: true });
 
@@ -237,9 +237,7 @@ describe("gemini subscription resolution", () => {
       fetchImpl,
     });
 
-    expect(urls[0]).toBe(
-      "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:loadCodeAssist",
-    );
+    expect(urls[0]).toBe("https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist");
     expect(await runtime.geminiAccounts.status("account-1")).toMatchObject({
       projectId: "dogfood-managed-99",
       isDogfood: true,
