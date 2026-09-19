@@ -402,9 +402,25 @@ async function resolveCredential(opts: {
     });
     opts.log(`[auth] ${opts.provider} credential from ${credential.source}`);
     if (credential.kind === "subscription" && credential.provider === "gemini-cli") {
+      // `plan` is the Google account email for Antigravity — log it so ops can confirm which
+      // personal identity a 429/403 actually spent, not just which browser cookie started the run.
+      const account = credential.plan?.trim() || "(email unknown)";
+      const via =
+        credential.source === "local-cli"
+          ? "machine agy login"
+          : credential.source === "account"
+            ? "provider-panel connect"
+            : credential.source;
+      const identityLine = `[auth] Antigravity account=${account} via=${via}`;
+      opts.log(identityLine);
+      // Also stdout: ServerHoster service logs only see process stdout/stderr, not the run bus.
+      console.info(identityLine);
       opts.log(
-        `[auth] antigravity project=${credential.projectId ?? "(none)"} dogfood=${credential.isDogfood ? "yes" : "no"} source=${credential.source}`,
+        `[auth] antigravity project=${credential.projectId ?? "(none)"} dogfood=${credential.isDogfood ? "yes" : "no"}`,
       );
+    }
+    if (credential.kind === "subscription" && credential.provider === "claude-code" && credential.plan) {
+      opts.log(`[auth] Claude plan=${credential.plan} via=${credential.source}`);
     }
     return credential;
   } catch (error) {
