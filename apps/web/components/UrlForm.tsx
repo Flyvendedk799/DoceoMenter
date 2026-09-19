@@ -48,7 +48,9 @@ export function UrlForm() {
           includeVideo,
           bootApp,
           provider: choice.provider,
-          model: choice.model,
+          // Always send an explicit model when one is known — omitting it lets a stale
+          // server GEMINI_MODEL_* env override what the panel showed.
+          ...(choice.model ? { model: choice.model } : {}),
         }),
       });
       if (!res.ok) {

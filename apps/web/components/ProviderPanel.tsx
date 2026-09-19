@@ -64,6 +64,20 @@ export function ProviderPanel({
     void refresh();
   }, [refresh]);
 
+  // The chooser display falls back to `selected.defaultModel` when `value.model` is missing,
+  // which previously meant the UI could show Gemini 3.1 Pro while the POST omitted `model`
+  // and the worker used a stale env primary/fallback (e.g. gemini-1.5-flash). Pin the model
+  // into the preference whenever the panel knows which provider is selected.
+  useEffect(() => {
+    if (!selected) return;
+    const modelOk = Boolean(value.model && selected.models.some((m) => m.id === value.model));
+    if (modelOk) return;
+    chosen.current = true;
+    const next = { provider: value.provider, model: selected.defaultModel };
+    onChange(next);
+    window.localStorage.setItem(PREFERENCE_KEY, JSON.stringify(next));
+  }, [selected, value.model, value.provider, onChange]);
+
   // The chosen provider is a preference, not a secret, so the browser is the right place for
   // it. Everything that could spend money now lives on the server.
   useEffect(() => {
@@ -144,7 +158,15 @@ export function ProviderPanel({
           <button
             key={provider.id}
             type="button"
-            onClick={() => select({ provider: provider.id as AiProvider, model: provider.defaultModel })}
+            onClick={() => {
+              const keep =
+                value.provider === provider.id &&
+                value.model &&
+                provider.models.some((m) => m.id === value.model)
+                  ? value.model
+                  : provider.defaultModel;
+              select({ provider: provider.id as AiProvider, model: keep });
+            }}
             aria-pressed={value.provider === provider.id}
             className={`rounded-sm border px-3.5 py-3 text-left transition-[border-color,background] duration-control ease-house ${
               value.provider === provider.id

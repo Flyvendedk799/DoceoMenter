@@ -494,4 +494,39 @@ describe("gemini wire", () => {
     expect(message).toMatch(/aicode-consumers/);
     expect(message).not.toMatch(/contact your administrator/i);
   });
+
+  it("does not fall back to a different model when primary equals fallback", async () => {
+    const { calls, impl } = recorder([
+      {
+        status: 429,
+        body: { error: { message: "Resource has been exhausted (e.g. check quota)." } },
+      },
+    ]);
+    const transport = createTransport({
+      provider: "gemini-cli",
+      credential: {
+        kind: "subscription",
+        wire: "gemini",
+        accessToken: "gcli-token",
+        projectId: null,
+        isDogfood: false,
+        source: "local-cli",
+      },
+      modelPrimary: "gemini-3.1-pro",
+      modelFallback: "gemini-3.1-pro",
+      logger: () => {},
+      fetchImpl: impl,
+    });
+
+    let message = "";
+    try {
+      await transport.start(SYSTEM, [TOOL], 1000).ask("go");
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.body.model).toBe("models/gemini-3.1-pro");
+    expect(message).toMatch(/gemini-3\.1-pro/);
+    expect(message).not.toMatch(/gemini-1\.5-flash|gemini-3-flash/);
+  });
 });
