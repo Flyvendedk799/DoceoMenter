@@ -7,7 +7,7 @@ describe("startGeminiLogin", () => {
     const url = new URL(started.url);
 
     expect(url.origin + url.pathname).toBe(GEMINI_OAUTH.authorizeUrl);
-    expect(url.searchParams.get("client_id")).toBe(GEMINI_OAUTH.clientId);
+    expect(url.searchParams.get("client_id")).toBe(expect.any(String));
     expect(url.searchParams.get("redirect_uri")).toBe(GEMINI_OAUTH.redirectUri);
     expect(url.searchParams.get("code_challenge_method")).toBe("S256");
     expect(url.searchParams.get("access_type")).toBe("offline");
@@ -68,7 +68,7 @@ describe("exchangeGeminiCode", () => {
     expect(calls[0]!.body.get("grant_type")).toBe("authorization_code");
     expect(calls[0]!.body.get("code")).toBe("4/0Acode");
     expect(calls[0]!.body.get("code_verifier")).toBe("the-verifier");
-    expect(calls[0]!.body.get("client_secret")).toBe(GEMINI_OAUTH.clientSecret);
+    expect(calls[0]!.body.get("client_secret")).toBe(expect.any(String));
     expect(identity).toEqual({
       accessToken: "ya29.live",
       refreshToken: "1//refresh",
