@@ -180,6 +180,23 @@ function fail(error: unknown, options: TransportOptions, model: string): never {
   }
 
   const message = described ?? `[${options.provider}] ${(error as Error)?.message ?? "call failed"}`;
+
+  if (
+    options.provider === "gemini-cli" &&
+    options.credential.kind === "subscription" &&
+    options.credential.wire === "gemini"
+  ) {
+    const personal = sanitizePersonalCloudCodeProject(options.credential.projectId ?? null);
+    const bodyOnly = options.credential.bodyOnlyProjectId?.trim() || null;
+    const host = cloudCodeBaseUrl(options.credential.isDogfood ?? false);
+    options.logger(
+      `[antigravity] call failed model=${model} status=${facts.status ?? "?"} host=${host} ` +
+        `headerProject=${personal ?? "(none)"} bodyProject=${personal ?? bodyOnly ?? "(none)"} ` +
+        `dogfood=${options.credential.isDogfood ? "yes" : "no"} source=${options.credential.source ?? "?"} ` +
+        `detail=${(facts.detail ?? (error as Error)?.message ?? "").slice(0, 240)}`,
+    );
+  }
+
   throw new ProviderCallError(message, facts, options.provider, model, { cause: error });
 }
 
@@ -542,6 +559,13 @@ function geminiTransport(options: TransportOptions): Transport {
           };
 
           const json = await withFallback(options, (m) => (model = m), async (m) => {
+            if (geminiSub) {
+              options.logger(
+                `[antigravity] generateContent model=${m} host=${cli.baseURL} ` +
+                  `headerProject=${personalProjectId ?? "(none)"} bodyProject=${bodyProjectId ?? "(none)"} ` +
+                  `dogfood=${geminiSub.isDogfood ? "yes" : "no"}`,
+              );
+            }
             const response = geminiSub
               ? await doFetch(`${cli.baseURL}:generateContent`, {
                   method: "POST",

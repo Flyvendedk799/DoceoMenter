@@ -38,6 +38,26 @@ describe("ensureCodeAssistProject", () => {
     expect(calls).toHaveLength(0);
   });
 
+  it("forwards discovery steps to an optional log sink for the run UI", async () => {
+    const lines: string[] = [];
+    const { impl } = recorder([
+      {
+        body: {
+          currentTier: { id: "free-tier" },
+          cloudaicompanionProject: "managed-ui-log",
+        },
+      },
+    ]);
+    await ensureCodeAssistProject({
+      accessToken: "ya29",
+      isDogfood: false,
+      fetchImpl: impl,
+      log: (line) => lines.push(line),
+    });
+    expect(lines.some((l) => l.includes("[code-assist] discovering managed project"))).toBe(true);
+    expect(lines.some((l) => l.includes("personal project=managed-ui-log"))).toBe(true);
+  });
+
   it("discovers G1/Dogfood on the daily host with agy metadata", async () => {
     const { calls, impl } = recorder([
       {

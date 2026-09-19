@@ -37,6 +37,11 @@ export type EnsureCodeAssistProjectInput = {
   fetchImpl?: typeof fetch;
   /** Test seam. */
   sleep?: (ms: number) => Promise<void>;
+  /**
+   * Optional sink for discovery steps (e.g. the run Worker log in the UI).
+   * Always also printed on stderr for ServerHoster.
+   */
+  log?: (line: string) => void;
 };
 
 /** Result of discovery / onboarding — includes which Cloud Code surface yielded the project. */
@@ -78,6 +83,16 @@ type OnboardUserResponse = {
 
 type HostDiscovery = { projectId: string | null; sawEnterpriseShared: boolean };
 
+function assistLog(log: ((line: string) => void) | undefined, line: string): void {
+  // stderr: ServerHoster captures console.error. Optional `log` reaches the run UI Worker log.
+  console.error(line);
+  try {
+    log?.(line);
+  } catch {
+    // Discovery must never fail because a log sink threw.
+  }
+}
+
 /**
  * Returns a personal project id suitable for `x-goog-user-project` / `generateContent.project`,
  * or a body-only shared companion fallback when Google will not provision anything else.
@@ -87,6 +102,10 @@ export async function ensureCodeAssistProject(
 ): Promise<CodeAssistDiscovery | null> {
   const existing = sanitizePersonalCloudCodeProject(input.projectId);
   if (existing) {
+    assistLog(
+      input.log,
+      `[code-assist] using stored personal project=${existing} dogfood=${input.isDogfood ? "yes" : "no"}`,
+    );
     return { projectId: existing, isDogfood: Boolean(input.isDogfood) };
   }
 
@@ -96,30 +115,44 @@ export async function ensureCodeAssistProject(
     Authorization: `Bearer ${input.accessToken}`,
     ...antigravityLoadHeaders(),
   };
+  const hosts = cloudCodeDiscoveryHosts(input.isDogfood);
+  assistLog(
+    input.log,
+    `[code-assist] discovering managed project dogfood=${input.isDogfood ? "yes" : "no"} hosts=${hosts.join(" → ")}`,
+  );
 
   let sawEnterpriseShared = false;
 
-  for (const baseURL of cloudCodeDiscoveryHosts(input.isDogfood)) {
-    const result = await discoverOnHost({ baseURL, headers, doFetch, sleep });
+  for (const baseURL of hosts) {
+    const result = await discoverOnHost({ baseURL, headers, doFetch, sleep, log: input.log });
     if (result.sawEnterpriseShared) sawEnterpriseShared = true;
     if (result.projectId) {
+      assistLog(
+        input.log,
+        `[code-assist] personal project=${result.projectId} from ${baseURL} (header+body safe)`,
+      );
       return { projectId: result.projectId, isDogfood: isDailyHost(baseURL) };
     }
   }
 
   // Last resort matching working Antigravity clients: onboard free-tier on daily even when
   // every loadCodeAssist only named the enterprise shared project.
-  const dailyFallback = await onboardFreeTierOnDaily({ headers, doFetch, sleep });
+  const dailyFallback = await onboardFreeTierOnDaily({ headers, doFetch, sleep, log: input.log });
   if (dailyFallback.sawEnterpriseShared) sawEnterpriseShared = true;
   if (dailyFallback.projectId) {
+    assistLog(
+      input.log,
+      `[code-assist] personal project=${dailyFallback.projectId} from daily free-tier onboard`,
+    );
     return { projectId: dailyFallback.projectId, isDogfood: true };
   }
 
   if (sawEnterpriseShared) {
     // Google bound this account to aicode-consumers and will not mint another id.
     // Send that id in the JSON body only; never as x-goog-user-project (IAM 403).
-    console.error(
-      `[code-assist] Google only named ${GOOGLE_ENTERPRISE_CLOUD_CODE_PROJECT}; using it as generateContent body project without x-goog-user-project`,
+    assistLog(
+      input.log,
+      `[code-assist] Google only named ${GOOGLE_ENTERPRISE_CLOUD_CODE_PROJECT}; using it as generateContent body project without x-goog-user-project (daily host)`,
     );
     return {
       projectId: null,
@@ -129,7 +162,7 @@ export async function ensureCodeAssistProject(
     };
   }
 
-  console.error("[code-assist] no managed project from any Cloud Code host; continuing without one");
+  assistLog(input.log, "[code-assist] no managed project from any Cloud Code host; continuing without one");
   return null;
 }
 
@@ -142,8 +175,9 @@ async function discoverOnHost(input: {
   headers: Record<string, string>;
   doFetch: typeof fetch;
   sleep: (ms: number) => Promise<void>;
+  log?: (line: string) => void;
 }): Promise<HostDiscovery> {
-  const { baseURL, headers, doFetch, sleep } = input;
+  const { baseURL, headers, doFetch, sleep, log } = input;
 
   let load: LoadCodeAssistResponse;
   try {
@@ -151,7 +185,7 @@ async function discoverOnHost(input: {
       metadata: ANTIGRAVITY_LOAD_METADATA,
     });
   } catch (error) {
-    console.error(`[code-assist] loadCodeAssist ${baseURL}: ${(error as Error).message}`);
+    assistLog(log, `[code-assist] loadCodeAssist ${baseURL}: ${(error as Error).message}`);
     return { projectId: null, sawEnterpriseShared: false };
   }
 
@@ -161,8 +195,14 @@ async function discoverOnHost(input: {
   let sawEnterpriseShared = false;
   if (rawLoad) {
     sawEnterpriseShared = rawLoad === GOOGLE_ENTERPRISE_CLOUD_CODE_PROJECT;
-    console.error(
-      `[code-assist] loadCodeAssist returned enterprise project ${rawLoad}; ignoring for personal Antigravity — will try onboardUser for a personal project`,
+    assistLog(
+      log,
+      `[code-assist] loadCodeAssist ${baseURL} returned enterprise project ${rawLoad}; will try onboardUser for a personal project`,
+    );
+  } else {
+    assistLog(
+      log,
+      `[code-assist] loadCodeAssist ${baseURL} ok tiers=${summarizeTiers(load)} project=(none)`,
     );
   }
 
@@ -176,7 +216,7 @@ async function discoverOnHost(input: {
       .map((t) => t.reasonMessage)
       .filter((m): m is string => typeof m === "string" && m.length > 0);
     if (reasons.length) {
-      console.error(`[code-assist] loadCodeAssist ${baseURL} ineligible: ${reasons.join("; ")}`);
+      assistLog(log, `[code-assist] loadCodeAssist ${baseURL} ineligible: ${reasons.join("; ")}`);
     }
     return { projectId: null, sawEnterpriseShared };
   }
@@ -188,11 +228,22 @@ async function discoverOnHost(input: {
     load.paidTier?.id ??
     FREE_TIER;
 
-  const onboarded = await onboardUserOnHost({ baseURL, headers, doFetch, sleep, tierId });
+  const onboarded = await onboardUserOnHost({ baseURL, headers, doFetch, sleep, tierId, log });
   return {
     projectId: onboarded.projectId,
     sawEnterpriseShared: sawEnterpriseShared || onboarded.sawEnterpriseShared,
   };
+}
+
+function summarizeTiers(load: LoadCodeAssistResponse): string {
+  const parts: string[] = [];
+  if (load.currentTier?.id) parts.push(`current=${load.currentTier.id}`);
+  if (load.paidTier?.id) parts.push(`paid=${load.paidTier.id}`);
+  const allowed = (load.allowedTiers ?? []).map((t) => t.id).filter(Boolean);
+  if (allowed.length) parts.push(`allowed=${allowed.join(",")}`);
+  const ineligible = (load.ineligibleTiers ?? []).map((t) => t.tierId ?? t.reasonCode).filter(Boolean);
+  if (ineligible.length) parts.push(`ineligible=${ineligible.join(",")}`);
+  return parts.length ? parts.join(" ") : "(none)";
 }
 
 /** Final fallback used by CLIProxyAPI-style clients: free-tier onboard on daily only. */
@@ -200,8 +251,10 @@ async function onboardFreeTierOnDaily(input: {
   headers: Record<string, string>;
   doFetch: typeof fetch;
   sleep: (ms: number) => Promise<void>;
+  log?: (line: string) => void;
 }): Promise<HostDiscovery> {
-  console.error(
+  assistLog(
+    input.log,
     `[code-assist] trying free-tier onboardUser on ${CLOUD_CODE_DAILY_BASE_URL} after hosts returned no personal project`,
   );
   return onboardUserOnHost({
@@ -210,6 +263,7 @@ async function onboardFreeTierOnDaily(input: {
     doFetch: input.doFetch,
     sleep: input.sleep,
     tierId: FREE_TIER,
+    log: input.log,
   });
 }
 
@@ -219,17 +273,19 @@ async function onboardUserOnHost(input: {
   doFetch: typeof fetch;
   sleep: (ms: number) => Promise<void>;
   tierId: string;
+  log?: (line: string) => void;
 }): Promise<HostDiscovery> {
-  const { baseURL, headers, doFetch, sleep, tierId } = input;
+  const { baseURL, headers, doFetch, sleep, tierId, log } = input;
 
   let lro: OnboardUserResponse;
   try {
+    assistLog(log, `[code-assist] onboardUser ${baseURL} tier=${tierId}`);
     lro = await postJson<OnboardUserResponse>(doFetch, `${baseURL}:onboardUser`, headers, {
       tier_id: tierId,
       metadata: ANTIGRAVITY_ONBOARD_METADATA,
     });
   } catch (error) {
-    console.error(`[code-assist] onboardUser ${baseURL}: ${(error as Error).message}`);
+    assistLog(log, `[code-assist] onboardUser ${baseURL}: ${(error as Error).message}`);
     return { projectId: null, sawEnterpriseShared: false };
   }
 
@@ -240,26 +296,28 @@ async function onboardUserOnHost(input: {
     try {
       lro = await getJson<OnboardUserResponse>(doFetch, `${baseURL}/${lro.name}`, headers);
     } catch (error) {
-      console.error(`[code-assist] onboard poll ${baseURL}: ${(error as Error).message}`);
+      assistLog(log, `[code-assist] onboard poll ${baseURL}: ${(error as Error).message}`);
       return { projectId: null, sawEnterpriseShared: false };
     }
   }
 
   const fromOnboard = sanitizePersonalCloudCodeProject(readProjectId(lro.response?.cloudaicompanionProject));
   if (fromOnboard) {
-    console.error(`[code-assist] onboardUser ${baseURL} provisioned personal project ${fromOnboard}`);
+    assistLog(log, `[code-assist] onboardUser ${baseURL} provisioned personal project ${fromOnboard}`);
     return { projectId: fromOnboard, sawEnterpriseShared: false };
   }
   const rawOnboard = readProjectId(lro.response?.cloudaicompanionProject);
   if (rawOnboard) {
-    console.error(
-      `[code-assist] onboardUser returned enterprise project ${rawOnboard}; ignoring for personal Antigravity`,
+    assistLog(
+      log,
+      `[code-assist] onboardUser ${baseURL} returned enterprise project ${rawOnboard}; ignoring for personal Antigravity`,
     );
     return {
       projectId: null,
       sawEnterpriseShared: rawOnboard === GOOGLE_ENTERPRISE_CLOUD_CODE_PROJECT,
     };
   }
+  assistLog(log, `[code-assist] onboardUser ${baseURL} done but no cloudaicompanionProject in response`);
   return { projectId: null, sawEnterpriseShared: false };
 }
 

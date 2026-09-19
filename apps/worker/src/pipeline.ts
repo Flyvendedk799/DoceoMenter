@@ -403,6 +403,8 @@ async function resolveCredential(opts: {
       provider: opts.provider,
       accountId: opts.accountId,
       inlineKey: opts.inlineKey,
+      // Discovery steps (`[code-assist] …`) land in the same Worker log the run UI shows.
+      log: (line) => opts.log(line),
     });
     opts.log(`[auth] ${opts.provider} credential from ${credential.source}`);
     if (credential.kind === "subscription" && credential.provider === "gemini-cli") {
@@ -423,9 +425,21 @@ async function resolveCredential(opts: {
       const projectLog =
         `[auth] antigravity project=${credential.projectId ?? "(none)"}` +
         `${credential.bodyOnlyProjectId ? ` bodyProject=${credential.bodyOnlyProjectId}` : ""}` +
-        ` dogfood=${credential.isDogfood ? "yes" : "no"}`;
+        ` dogfood=${credential.isDogfood ? "yes" : "no"}` +
+        ` headerProject=${credential.projectId ? "yes" : "no"}`;
       console.error(projectLog);
       opts.log(projectLog);
+      if (!credential.projectId && credential.bodyOnlyProjectId) {
+        opts.log(
+          `[auth] Antigravity will send project=${credential.bodyOnlyProjectId} in the request body only (no x-goog-user-project) on the ${credential.isDogfood ? "daily" : "prod"} host`,
+          "warn",
+        );
+      } else if (!credential.projectId && !credential.bodyOnlyProjectId) {
+        opts.log(
+          `[auth] Antigravity has no Cloud Code project for this login — generateContent will omit project (often looks like a false 429)`,
+          "warn",
+        );
+      }
     }
     if (credential.kind === "subscription" && credential.provider === "claude-code" && credential.plan) {
       opts.log(`[auth] Claude plan=${credential.plan} via=${credential.source}`);

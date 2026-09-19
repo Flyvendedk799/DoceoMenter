@@ -88,6 +88,8 @@ export type ResolveOptions = {
   env?: NodeJS.ProcessEnv;
   /** Test seam for Code Assist onboarding / token refresh. */
   fetchImpl?: typeof fetch;
+  /** Surfaces Code Assist discovery steps in the run Worker log (UI). */
+  log?: (line: string) => void;
 };
 
 export async function resolveProviderCredential(
@@ -279,6 +281,7 @@ async function resolveManagedProject(input: {
       isDogfood: input.isDogfood,
       projectId: cleanedStored,
       ...(input.options.fetchImpl ? { fetchImpl: input.options.fetchImpl } : {}),
+      ...(input.options.log ? { log: input.options.log } : {}),
     });
     // Soft-fail paths return null (TOS / Dogfood skip / HTTP error with no shared companion).
     if (
