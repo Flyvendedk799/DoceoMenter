@@ -56,6 +56,7 @@ export const USER_CONCEPT_PROMPT = `Read the <repo-context>. Then call BOTH tool
    - If liveMedia is "skip", include zero live-app shots.
    - If liveMedia is "required" or "if-possible" and surface is browser or cli, include >=1 live-app shot with importance=1.
    - If signals.hasBackend is true OR fileCount>50, include >=1 shot with target="code-architecture" and a Mermaid spec.
+     Quote node labels that contain parentheses or punctuation, e.g. A["apps/web (React)"] not A[apps/web (React)].
    - At most 1 video; only include if includeVideo is true AND surface is browser.
    - Routes/commands for live-app shots must be plausible from the source.
    - For static HTML prototype dirs (project/, admin/, …), use file routes like /Landing.html or /Kategorier.html — not a framework SPA "/".
