@@ -178,23 +178,27 @@ async function resolveGeminiSubscription(
     const status = await runtime.geminiAccounts.status(options.accountId);
     if (status.connected) {
       const accessToken = await runtime.geminiAccounts.token(options.accountId);
-      const projectId = await resolveManagedProject({
+      const discovered = await resolveManagedProject({
         accessToken,
         isDogfood: status.isDogfood,
         projectId: status.projectId,
         options,
-        persist: async (id) => {
-          await runtime.geminiAccounts.setProjectId(options.accountId!, id);
+        persist: async (discovery) => {
+          await runtime.geminiAccounts.setProjectId(options.accountId!, discovery.projectId);
+          if (discovery.isDogfood !== status.isDogfood) {
+            await runtime.geminiAccounts.setIsDogfood(options.accountId!, discovery.isDogfood);
+          }
         },
       });
+      const isDogfood = discovered?.isDogfood ?? status.isDogfood;
       return {
         provider: "gemini-cli",
         wire: "gemini",
         kind: "subscription",
         accessToken,
-        projectId,
+        projectId: discovered?.projectId ?? null,
         plan: status.email,
-        isDogfood: status.isDogfood,
+        isDogfood,
         source: "account",
       };
     }
@@ -209,7 +213,7 @@ async function resolveGeminiSubscription(
     if (local.connected) {
       const env = options.env ?? process.env;
       const accessToken = await localGemini.token();
-      const projectId = await resolveManagedProject({
+      const discovered = await resolveManagedProject({
         accessToken,
         isDogfood: undefined,
         projectId: env.GEMINI_PROJECT_ID?.trim() || null,
@@ -220,8 +224,9 @@ async function resolveGeminiSubscription(
         wire: "gemini",
         kind: "subscription",
         accessToken,
-        projectId,
+        projectId: discovered?.projectId ?? null,
         plan: local.email,
+        isDogfood: discovered?.isDogfood,
         source: "local-cli",
       };
     }
@@ -235,7 +240,8 @@ async function resolveGeminiSubscription(
 
 /**
  * Ask Cloud Code for the managed project id `agy` would discover via loadCodeAssist/onboardUser.
- * Without a usable personal project, flagship models often answer #3501 even with a valid token.
+ * Without a usable personal project, flagship models often answer #3501 or a misleading 429
+ * RESOURCE_EXHAUSTED even with a valid token and dashboard quota remaining.
  * Enterprise shared project `aicode-consumers` is never kept or sent.
  */
 async function resolveManagedProject(input: {
@@ -243,12 +249,12 @@ async function resolveManagedProject(input: {
   isDogfood?: boolean;
   projectId: string | null;
   options: ResolveOptions;
-  persist?: (projectId: string | null) => Promise<void>;
-}): Promise<string | null> {
+  persist?: (discovery: { projectId: string | null; isDogfood: boolean }) => Promise<void>;
+}): Promise<{ projectId: string; isDogfood: boolean } | null> {
   const cleanedStored = sanitizePersonalCloudCodeProject(input.projectId);
   // Drop a previously persisted enterprise project so the next status read is honest.
   if (input.projectId && !cleanedStored && input.persist) {
-    await input.persist(null);
+    await input.persist({ projectId: null, isDogfood: Boolean(input.isDogfood) });
   }
 
   try {
@@ -258,8 +264,12 @@ async function resolveManagedProject(input: {
       projectId: cleanedStored,
       ...(input.options.fetchImpl ? { fetchImpl: input.options.fetchImpl } : {}),
     });
-    // Soft-fail paths return null (TOS / Dogfood skip / enterprise project / HTTP error).
-    if (resolved && input.persist && resolved !== input.projectId) {
+    // Soft-fail paths return null (TOS / Dogfood skip / enterprise-only / HTTP error).
+    if (
+      resolved &&
+      input.persist &&
+      (resolved.projectId !== cleanedStored || resolved.isDogfood !== Boolean(input.isDogfood))
+    ) {
       await input.persist(resolved);
     }
     return resolved;

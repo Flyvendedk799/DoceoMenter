@@ -10,14 +10,17 @@
  * which is not a missing license on the account.
  *
  * Never accepts Google's enterprise shared project `aicode-consumers` (personal accounts
- * have no IAM there). Returns null when discovery is refused or yields that project so
- * `generateContent` can proceed without it.
+ * have no IAM there). When loadCodeAssist returns that project, we still try `onboardUser`
+ * (and a final daily free-tier onboard) so a personal managed project can be provisioned —
+ * otherwise `generateContent` without a project often answers a misleading 429 RESOURCE_EXHAUSTED
+ * even when the Google AI dashboard shows quota remaining.
  */
 
 import {
   ANTIGRAVITY_LOAD_METADATA,
   ANTIGRAVITY_ONBOARD_METADATA,
   antigravityLoadHeaders,
+  CLOUD_CODE_DAILY_BASE_URL,
   cloudCodeDiscoveryHosts,
   sanitizePersonalCloudCodeProject,
 } from "@doceomenter/shared";
@@ -34,6 +37,13 @@ export type EnsureCodeAssistProjectInput = {
   fetchImpl?: typeof fetch;
   /** Test seam. */
   sleep?: (ms: number) => Promise<void>;
+};
+
+/** Result of discovery / onboarding — includes which Cloud Code surface yielded the project. */
+export type CodeAssistDiscovery = {
+  projectId: string;
+  /** True when the project came from the daily (G1 / consumer) host. */
+  isDogfood: boolean;
 };
 
 export class CodeAssistSetupError extends Error {
@@ -58,14 +68,16 @@ type OnboardUserResponse = {
 };
 
 /**
- * Returns a project id suitable for `x-goog-user-project` / `generateContent.project`,
- * or null when discovery is refused / unavailable / enterprise-only.
+ * Returns a personal project id suitable for `x-goog-user-project` / `generateContent.project`,
+ * or null when discovery / onboarding cannot produce one.
  */
 export async function ensureCodeAssistProject(
   input: EnsureCodeAssistProjectInput,
-): Promise<string | null> {
+): Promise<CodeAssistDiscovery | null> {
   const existing = sanitizePersonalCloudCodeProject(input.projectId);
-  if (existing) return existing;
+  if (existing) {
+    return { projectId: existing, isDogfood: Boolean(input.isDogfood) };
+  }
 
   const doFetch = input.fetchImpl ?? fetch;
   const sleep = input.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
@@ -76,11 +88,24 @@ export async function ensureCodeAssistProject(
 
   for (const baseURL of cloudCodeDiscoveryHosts(input.isDogfood)) {
     const projectId = await discoverOnHost({ baseURL, headers, doFetch, sleep });
-    if (projectId) return projectId;
+    if (projectId) {
+      return { projectId, isDogfood: isDailyHost(baseURL) };
+    }
+  }
+
+  // Last resort matching working Antigravity clients: onboard free-tier on daily even when
+  // every loadCodeAssist only named the enterprise shared project.
+  const dailyFallback = await onboardFreeTierOnDaily({ headers, doFetch, sleep });
+  if (dailyFallback) {
+    return { projectId: dailyFallback, isDogfood: true };
   }
 
   console.error("[code-assist] no managed project from any Cloud Code host; continuing without one");
   return null;
+}
+
+function isDailyHost(baseURL: string): boolean {
+  return baseURL === CLOUD_CODE_DAILY_BASE_URL || baseURL.includes("daily-cloudcode-pa");
 }
 
 async function discoverOnHost(input: {
@@ -106,10 +131,10 @@ async function discoverOnHost(input: {
   const rawLoad = readProjectId(load.cloudaicompanionProject);
   if (rawLoad) {
     console.error(
-      `[code-assist] loadCodeAssist returned enterprise project ${rawLoad}; ignoring for personal Antigravity`,
+      `[code-assist] loadCodeAssist returned enterprise project ${rawLoad}; ignoring for personal Antigravity — will try onboardUser for a personal project`,
     );
-    // Do not try onboardUser on this host — Google already named a project we cannot use.
-    return null;
+    // Do not return here. Personal Google AI accounts often get `aicode-consumers` from load
+    // while `onboardUser` still provisions a usable managed project (agy / CLIProxyAPI do this).
   }
 
   const canOnboard = Boolean(
@@ -118,8 +143,9 @@ async function discoverOnHost(input: {
       (load.allowedTiers && load.allowedTiers.length > 0),
   );
   // ineligibleTiers is often present *alongside* a usable paid/default tier. Only skip this
-  // host when Google offered nothing we can onboard.
-  if (!canOnboard) {
+  // host when Google offered nothing we can onboard — unless load only named the enterprise
+  // project, in which case we still try free-tier onboard below.
+  if (!canOnboard && !rawLoad) {
     const reasons = (load.ineligibleTiers ?? [])
       .map((t) => t.reasonMessage)
       .filter((m): m is string => typeof m === "string" && m.length > 0);
@@ -135,6 +161,36 @@ async function discoverOnHost(input: {
     load.currentTier?.id ??
     load.paidTier?.id ??
     FREE_TIER;
+
+  return onboardUserOnHost({ baseURL, headers, doFetch, sleep, tierId });
+}
+
+/** Final fallback used by CLIProxyAPI-style clients: free-tier onboard on daily only. */
+async function onboardFreeTierOnDaily(input: {
+  headers: Record<string, string>;
+  doFetch: typeof fetch;
+  sleep: (ms: number) => Promise<void>;
+}): Promise<string | null> {
+  console.error(
+    `[code-assist] trying free-tier onboardUser on ${CLOUD_CODE_DAILY_BASE_URL} after hosts returned no personal project`,
+  );
+  return onboardUserOnHost({
+    baseURL: CLOUD_CODE_DAILY_BASE_URL,
+    headers: input.headers,
+    doFetch: input.doFetch,
+    sleep: input.sleep,
+    tierId: FREE_TIER,
+  });
+}
+
+async function onboardUserOnHost(input: {
+  baseURL: string;
+  headers: Record<string, string>;
+  doFetch: typeof fetch;
+  sleep: (ms: number) => Promise<void>;
+  tierId: string;
+}): Promise<string | null> {
+  const { baseURL, headers, doFetch, sleep, tierId } = input;
 
   let lro: OnboardUserResponse;
   try {
@@ -160,7 +216,10 @@ async function discoverOnHost(input: {
   }
 
   const fromOnboard = sanitizePersonalCloudCodeProject(readProjectId(lro.response?.cloudaicompanionProject));
-  if (fromOnboard) return fromOnboard;
+  if (fromOnboard) {
+    console.error(`[code-assist] onboardUser ${baseURL} provisioned personal project ${fromOnboard}`);
+    return fromOnboard;
+  }
   const rawOnboard = readProjectId(lro.response?.cloudaicompanionProject);
   if (rawOnboard) {
     console.error(

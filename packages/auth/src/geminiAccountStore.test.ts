@@ -59,6 +59,16 @@ describe("GeminiAccountStore", () => {
     expect(await store.status("account-1")).toMatchObject({ projectId: null });
   });
 
+  it("can flip the dogfood host flag without touching tokens", async () => {
+    const store = storeIn(() => 0);
+    await store.save("account-1", { ...identity, expiresAt: 3_600_000, isDogfood: false });
+    expect(await store.status("account-1")).toMatchObject({ isDogfood: false });
+
+    await store.setIsDogfood("account-1", true);
+    expect(await store.status("account-1")).toMatchObject({ isDogfood: true });
+    expect(await store.token("account-1")).toBe("ya29-live");
+  });
+
   it("refreshes an aged-out token and writes the result back", async () => {
     let now = 0;
     const calls: URLSearchParams[] = [];

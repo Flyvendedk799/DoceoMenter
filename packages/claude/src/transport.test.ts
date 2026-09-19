@@ -508,7 +508,7 @@ describe("gemini wire", () => {
         kind: "subscription",
         wire: "gemini",
         accessToken: "gcli-token",
-        projectId: null,
+        projectId: "personal-managed",
         isDogfood: false,
         source: "local-cli",
       },
@@ -528,5 +528,40 @@ describe("gemini wire", () => {
     expect(calls[0]!.body.model).toBe("models/gemini-3.1-pro");
     expect(message).toMatch(/gemini-3\.1-pro/);
     expect(message).not.toMatch(/gemini-1\.5-flash|gemini-3-flash/);
+  });
+
+  it("explains 429 without a managed project as routing, not spent quota", async () => {
+    const { impl } = recorder([
+      {
+        status: 429,
+        body: { error: { message: "Resource has been exhausted (e.g. check quota)." } },
+      },
+    ]);
+    const transport = createTransport({
+      provider: "gemini-cli",
+      credential: {
+        kind: "subscription",
+        wire: "gemini",
+        accessToken: "gcli-token",
+        projectId: null,
+        isDogfood: false,
+        source: "account",
+      },
+      modelPrimary: "gemini-3.1-pro",
+      modelFallback: "gemini-3.1-pro",
+      logger: () => {},
+      fetchImpl: impl,
+      configureAt: "the provider panel",
+    });
+
+    let message = "";
+    try {
+      await transport.start(SYSTEM, [TOOL], 1000).ask("go");
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toMatch(/no personal Cloud Code managed project|aicode-consumers/i);
+    expect(message).toMatch(/dashboard shows limit remaining|quota remaining/i);
+    expect(message).not.toMatch(/Pick a lighter model/i);
   });
 });

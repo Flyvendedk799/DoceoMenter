@@ -43,6 +43,7 @@ export {
 export {
   CodeAssistSetupError,
   ensureCodeAssistProject,
+  type CodeAssistDiscovery,
   type EnsureCodeAssistProjectInput,
 } from "./codeAssist.js";
 export { readAuthStatus, type AuthStatus, type ProviderStatus } from "./status.js";
