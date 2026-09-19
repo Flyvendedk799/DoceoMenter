@@ -354,10 +354,13 @@ describe("gemini wire", () => {
     expect(calls[0]!.headers["x-goog-user-project"]).toBe("my-project");
     expect(calls[0]!.headers["user-agent"]).toBe("antigravity");
     expect(calls[0]!.headers["x-goog-api-client"]).toContain("vscode_cloudshelleditor");
-    expect(JSON.parse(calls[0]!.headers["client-metadata"])).toMatchObject({
-      ideType: "ANTIGRAVITY",
-      pluginType: "GEMINI",
-    });
+    expect(calls[0]!.headers["client-metadata"]).toEqual(
+      JSON.stringify({
+        ideType: "ANTIGRAVITY",
+        platform: "PLATFORM_UNSPECIFIED",
+        pluginType: "GEMINI",
+      }),
+    );
     expect(calls[0]!.body.project).toBe("my-project");
     expect(calls[0]!.body.request.tools[0].functionDeclarations[0].name).toBe("submit_thing");
     expect(turn.calls).toEqual([{ id: "submit_thing", name: "submit_thing", input: { ok: true } }]);
