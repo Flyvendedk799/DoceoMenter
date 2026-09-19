@@ -446,6 +446,7 @@ function geminiTransport(options: TransportOptions): Transport {
       })
     : antigravityKeyOptions((credential as { key: string }).key);
 
+  console.error(`[TRANSPORT DEBUG] Base URL: ${cli.baseURL} | isDogfood: ${(credential as any).isDogfood}`);
   return {
     provider: options.provider,
     currentModel: () => model,
