@@ -273,25 +273,97 @@ describe("gemini subscription resolution", () => {
     );
   });
 
-  it("clears a stored aicode-consumers project and continues without it", async () => {
+  it("clears a stored aicode-consumers project and rediscovers without sending it", async () => {
     const runtime = await runtimeIn();
     await runtime.geminiAccounts.save("account-1", { ...identity, isDogfood: false }, "aicode-consumers");
+
+    const urls: string[] = [];
+    const fetchImpl = (async (input: any, _init: any) => {
+      const url = typeof input === "string" ? input : String(input.url);
+      urls.push(url);
+      if (url.includes("onboardUser")) {
+        return new Response(
+          JSON.stringify({
+            done: true,
+            response: { cloudaicompanionProject: { id: "personal-after-onboard" } },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          currentTier: { id: "free-tier" },
+          cloudaicompanionProject: "aicode-consumers",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
 
     const credential = await resolveProviderCredential({
       provider: "gemini-cli",
       accountId: "account-1",
       runtime,
-      // Discovery would return the same enterprise project — ensureCodeAssist must drop it.
-      fetchImpl: codeAssistFetch("aicode-consumers"),
+      fetchImpl,
     });
 
     expect(credential).toMatchObject({
       kind: "subscription",
-      projectId: null,
+      projectId: "personal-after-onboard",
       source: "account",
     });
+    expect(urls.some((u) => u.includes("onboardUser"))).toBe(true);
     expect(await runtime.geminiAccounts.status("account-1")).toMatchObject({
-      projectId: null,
+      projectId: "personal-after-onboard",
+    });
+  });
+
+  it("flips dogfood when a personal project is provisioned on the daily host", async () => {
+    const runtime = await runtimeIn();
+    await runtime.geminiAccounts.save("account-1", { ...identity, isDogfood: false });
+
+    const fetchImpl = (async (input: any) => {
+      const url = typeof input === "string" ? input : String(input.url);
+      if (url.includes("daily-cloudcode-pa") && url.includes("onboardUser")) {
+        return new Response(
+          JSON.stringify({
+            done: true,
+            response: { cloudaicompanionProject: { id: "daily-only-project" } },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (url.includes("onboardUser")) {
+        return new Response(
+          JSON.stringify({
+            done: true,
+            response: { cloudaicompanionProject: "aicode-consumers" },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          currentTier: { id: "free-tier" },
+          cloudaicompanionProject: "aicode-consumers",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+
+    const credential = await resolveProviderCredential({
+      provider: "gemini-cli",
+      accountId: "account-1",
+      runtime,
+      fetchImpl,
+    });
+
+    expect(credential).toMatchObject({
+      projectId: "daily-only-project",
+      isDogfood: true,
+    });
+    expect(await runtime.geminiAccounts.status("account-1")).toMatchObject({
+      projectId: "daily-only-project",
+      isDogfood: true,
     });
   });
 });

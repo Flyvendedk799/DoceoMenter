@@ -420,6 +420,9 @@ async function resolveCredential(opts: {
       // stderr: ServerHoster reliably captures console.error (same channel as [code-assist]
       // and the old AUTH DIAGNOSTIC). console.info was invisible in service logs.
       console.error(identityLine);
+      console.error(
+        `[auth] antigravity project=${credential.projectId ?? "(none)"} dogfood=${credential.isDogfood ? "yes" : "no"}`,
+      );
       opts.log(
         `[auth] antigravity project=${credential.projectId ?? "(none)"} dogfood=${credential.isDogfood ? "yes" : "no"}`,
       );

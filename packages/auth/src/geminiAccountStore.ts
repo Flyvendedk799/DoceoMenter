@@ -110,6 +110,20 @@ export class GeminiAccountStore {
     });
   }
 
+  /**
+   * Persist whether Cloud Code traffic should use the daily (G1/consumer) host.
+   * Discovery may flip this when a personal project is provisioned on daily after prod only
+   * returned Google's enterprise shared project.
+   */
+  async setIsDogfood(accountId: string, isDogfood: boolean): Promise<void> {
+    const record = await this.options.store.read(this.key(accountId));
+    if (!record) return;
+    await this.options.store.write(this.key(accountId), {
+      payload: record.payload,
+      meta: { ...record.meta, isDogfood: isDogfood ? 1 : 0 },
+    });
+  }
+
   async forget(accountId: string): Promise<void> {
     await this.options.store.delete(this.key(accountId));
   }

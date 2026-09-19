@@ -131,11 +131,12 @@ function fail(error: unknown, options: TransportOptions, model: string): never {
     ...(options.configureAt ? { configureAt: options.configureAt } : {}),
   });
 
-  // Antigravity 401/403: personal Google AI users need machine `agy` / reconnect copy — never
+  // Antigravity 401/403: personal Google AI users need reconnect / `agy` copy — never
   // enterprise IAM instructions for `aicode-consumers` as the happy path.
+  // Antigravity 429 with no managed project: Google often returns RESOURCE_EXHAUSTED even when
+  // the dashboard shows quota left — that is a missing personal Cloud Code project, not spent quota.
   if (
     options.provider === "gemini-cli" &&
-    (facts.status === 401 || facts.status === 403) &&
     options.credential.kind === "subscription" &&
     options.credential.wire === "gemini"
   ) {
@@ -144,21 +145,33 @@ function fail(error: unknown, options: TransportOptions, model: string): never {
     const enterpriseProject = /aicode-consumers|serviceusage\.serviceUsageConsumer/i.test(
       facts.detail ?? "",
     );
-    if (enterpriseProject) {
+    const noPersonalProject = !sanitizePersonalCloudCodeProject(options.credential.projectId ?? null);
+    const exhausted =
+      facts.status === 429 ||
+      /RESOURCE_EXHAUSTED|Resource has been exhausted/i.test(facts.detail ?? "");
+
+    if ((facts.status === 401 || facts.status === 403) && enterpriseProject) {
       described =
         `Google refused Antigravity for \`${model}\` because the request targeted the enterprise ` +
         `consumer project \`aicode-consumers\`, which personal Google AI subscriptions cannot use. ` +
-        `Disconnect any provider-panel Google connect, run \`agy\` on this machine with your personal ` +
-        `Google AI account, then retry — DoceoMenter will not send that project for personal logins.${detail}`;
-    } else if (options.credential.source === "account") {
+        `Disconnect Antigravity in the provider panel, Connect again with your personal Google AI ` +
+        `account (enable Advanced: G1 Dogfood if your plan uses that surface), and retry — ` +
+        `DoceoMenter will not send that project for personal logins.${detail}`;
+    } else if ((facts.status === 401 || facts.status === 403) && options.credential.source === "account") {
       described =
         `Google rejected the Antigravity account connected${at || " in the provider panel"} for \`${model}\`. ` +
-        `For a personal Google AI plan, prefer the machine Antigravity login: run \`agy\` on the host, ` +
-        `Disconnect the panel Google connect if it is set, then retry.${detail}`;
-    } else if (options.credential.source === "local-cli") {
+        `Disconnect and Connect again with the Google account that holds your personal Google AI subscription.${detail}`;
+    } else if ((facts.status === 401 || facts.status === 403) && options.credential.source === "local-cli") {
       described =
         `Google rejected the machine Antigravity (\`agy\`) login for \`${model}\`. ` +
         `Run \`agy\` on the host and sign in again with the Google account that holds your personal Google AI subscription.${detail}`;
+    } else if (exhausted && noPersonalProject) {
+      described =
+        `Google returned RESOURCE_EXHAUSTED for Antigravity \`${model}\`, but DoceoMenter has no personal ` +
+        `Cloud Code managed project for this login (Google's enterprise \`aicode-consumers\` project is never used). ` +
+        `That often looks like a spent quota even when the Google AI dashboard shows limit remaining. ` +
+        `Disconnect Antigravity in the provider panel, Connect again (try Advanced: G1 Dogfood if needed), ` +
+        `or set your own GCP project id in the panel, then retry.${detail}`;
     }
   }
 
