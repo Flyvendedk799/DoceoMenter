@@ -154,6 +154,8 @@ function fail(error: unknown, options: TransportOptions, model: string): never {
     const exhausted =
       facts.status === 429 ||
       /RESOURCE_EXHAUSTED|Resource has been exhausted/i.test(facts.detail ?? "");
+    const subscriptionRequired =
+      /#3501|SUBSCRIPTION_REQUIRED|valid license of this product/i.test(facts.detail ?? "");
 
     if ((facts.status === 401 || facts.status === 403) && enterpriseProject) {
       described =
@@ -162,6 +164,18 @@ function fail(error: unknown, options: TransportOptions, model: string): never {
         `subscriptions cannot use. Disconnect Antigravity in the provider panel and Connect again ` +
         `(use the G1 / personal Google AI option) so DoceoMenter gets a fresh token without the ` +
         `enterprise Code Assist scope.${detail}`;
+    } else if (
+      (facts.status === 401 || facts.status === 403) &&
+      subscriptionRequired &&
+      noPersonalProject
+    ) {
+      // Pro/Ultra is often standard-tier only: Google AI Pro is active, but Code Assist still
+      // needs a user-owned GCP project. Reconnect alone does not fix #3501 without that project.
+      described =
+        `Google returned #3501 SUBSCRIPTION_REQUIRED for Antigravity \`${model}\`. A Google AI Pro/Ultra ` +
+        `subscription is not enough by itself — Code Assist standard-tier needs a GCP project you own. ` +
+        `In the provider panel under Antigravity, set PERSONAL GCP PROJECT, enable Gemini for Google ` +
+        `Cloud on that project, Save, then retry.${detail}`;
     } else if ((facts.status === 401 || facts.status === 403) && options.credential.source === "account") {
       described =
         `Google rejected the Antigravity account connected${at || " in the provider panel"} for \`${model}\`. ` +
@@ -173,9 +187,8 @@ function fail(error: unknown, options: TransportOptions, model: string): never {
     } else if (exhausted && noPersonalProject && !bodyOnly) {
       described =
         `Google returned RESOURCE_EXHAUSTED for Antigravity \`${model}\`, but DoceoMenter has no Cloud Code ` +
-        `project for this login. Disconnect Antigravity in the provider panel and Connect again with your ` +
-        `personal Google AI account (G1 / personal option), then retry — older connects that requested the ` +
-        `enterprise \`aicode\` scope often cannot discover a usable project.${detail}`;
+        `project for this login. Google AI Pro/Ultra often needs a PERSONAL GCP PROJECT in the Antigravity ` +
+        `provider panel (standard-tier). Set a project you own, Save, then retry.${detail}`;
     }
   }
 

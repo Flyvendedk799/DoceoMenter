@@ -40,5 +40,6 @@ Local `agy` on the same personal Google AI account worked.
 7. **Persist daily host**: if the personal project was provisioned on daily, flip `isDogfood` so `generateContent` uses the same surface.
 8. **Never request the `aicode` OAuth scope** (Antigravity API spec / working clients omit it). That scope routes personal Google AI accounts onto `aicode-consumers`. Existing panel connects must Disconnect + Connect again.
 9. **Body-only companion fallback**: if Google still only names `aicode-consumers` after onboard, send it as generateContent `project` **without** `x-goog-user-project` (the header is what triggered serviceUsageConsumer 403).
+10. **Google AI Pro/Ultra = Code Assist `standard-tier`**: many Pro accounts are **ineligible for free-tier**. Google then requires a user-owned GCP project (`userDefinedCloudaicompanionProject`) — same as gemini-cli’s `GOOGLE_CLOUD_PROJECT`. Without it, `onboardUser` finishes with no companion project and `generateContent` answers **#3501 SUBSCRIPTION_REQUIRED** even though Google AI Pro is active. DoceoMenter fails early with clear copy and the Antigravity panel’s **PERSONAL GCP PROJECT** field is the fix (enable Gemini for Google Cloud on that project).
 
 Internal provider id stays `gemini-cli` for the `ai-auth` registry; user-facing strings say Antigravity.

@@ -43,6 +43,7 @@ export {
 export {
   CodeAssistSetupError,
   ensureCodeAssistProject,
+  gcpProjectRequiredMessage,
   type CodeAssistDiscovery,
   type EnsureCodeAssistProjectInput,
 } from "./codeAssist.js";
