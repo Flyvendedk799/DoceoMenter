@@ -52,6 +52,20 @@ export type Signals = {
     | "unknown";
 };
 
+/**
+ * End-user product identity scraped from UI copy / package description /
+ * design-chat intent — used so concept drafting is not dominated by
+ * agent-handoff or scaffolding READMEs.
+ */
+export type ProductSurface = {
+  path: string;
+  kind: "html-identity" | "package-description" | "design-intent";
+  title?: string;
+  description?: string;
+  /** Short grounded snippet for the model. */
+  text: string;
+};
+
 export type Analysis = {
   repo: { owner: string; name: string; ref: string; commitSha: string };
   sizeBytes: number;
@@ -60,6 +74,8 @@ export type Analysis = {
   manifests: Manifest;
   entrypoints: string[];
   readme?: { path: string; firstNHeadings: string[]; rawTrimmed: string };
+  /** Product-facing copy (titles, meta, package description, design intent). */
+  productSurfaces?: ProductSurface[];
   fileIndex: Array<{ path: string; bytes: number }>;
   signals: Signals;
 };
