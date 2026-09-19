@@ -455,6 +455,48 @@ describe("gemini wire", () => {
     expect(calls[0]!.body.project).toBeUndefined();
   });
 
+  it("sends aicode-consumers in the body only when discovery marks bodyOnlyProjectId", async () => {
+    const { calls, impl } = recorder([
+      {
+        body: {
+          response: {
+            candidates: [
+              {
+                content: {
+                  role: "model",
+                  parts: [{ functionCall: { name: "submit_thing", args: { ok: true } } }],
+                },
+                finishReason: "STOP",
+              },
+            ],
+          },
+        },
+      },
+    ]);
+    const transport = createTransport({
+      provider: "gemini-cli",
+      credential: {
+        kind: "subscription",
+        wire: "gemini",
+        accessToken: "gcli-token",
+        projectId: null,
+        bodyOnlyProjectId: "aicode-consumers",
+        isDogfood: true,
+        source: "account",
+      },
+      modelPrimary: "gemini-3.1-pro",
+      modelFallback: "gemini-3-flash",
+      logger: () => {},
+      fetchImpl: impl,
+    });
+
+    await transport.start(SYSTEM, [TOOL], 1000).ask("go");
+
+    expect(calls[0]!.url).toBe("https://daily-cloudcode-pa.googleapis.com/v1internal:generateContent");
+    expect(calls[0]!.headers["x-goog-user-project"]).toBeUndefined();
+    expect(calls[0]!.body.project).toBe("aicode-consumers");
+  });
+
   it("explains aicode-consumers 403 as a personal Antigravity reconnect, not enterprise IAM", async () => {
     const { impl } = recorder([
       {
@@ -560,8 +602,7 @@ describe("gemini wire", () => {
     } catch (error) {
       message = (error as Error).message;
     }
-    expect(message).toMatch(/no personal Cloud Code managed project|aicode-consumers/i);
-    expect(message).toMatch(/dashboard shows limit remaining|quota remaining/i);
+    expect(message).toMatch(/no Cloud Code project|aicode scope|Connect again/i);
     expect(message).not.toMatch(/Pick a lighter model/i);
   });
 });

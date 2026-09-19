@@ -221,7 +221,7 @@ describe("ensureCodeAssistProject", () => {
     error.mockRestore();
   });
 
-  it("falls back to daily free-tier onboard when both hosts only return aicode-consumers", async () => {
+  it("falls back to body-only aicode-consumers when onboard cannot provision a personal project", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const { calls, impl } = recorder([
       {
@@ -251,7 +251,7 @@ describe("ensureCodeAssistProject", () => {
       {
         body: {
           done: true,
-          response: { cloudaicompanionProject: { id: "daily-provisioned-99" } },
+          response: { cloudaicompanionProject: "aicode-consumers" },
         },
       },
     ]);
@@ -261,9 +261,12 @@ describe("ensureCodeAssistProject", () => {
       fetchImpl: impl,
       sleep: async () => {},
     });
-    expect(discovered).toEqual({ projectId: "daily-provisioned-99", isDogfood: true });
+    expect(discovered).toEqual({
+      projectId: null,
+      bodyOnlyProjectId: "aicode-consumers",
+      isDogfood: true,
+    });
     expect(calls.at(-1)!.url).toBe("https://daily-cloudcode-pa.googleapis.com/v1internal:onboardUser");
-    expect(calls.at(-1)!.body).toMatchObject({ tier_id: "free-tier" });
     error.mockRestore();
   });
 

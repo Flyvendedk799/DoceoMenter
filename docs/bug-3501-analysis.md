@@ -38,5 +38,7 @@ Local `agy` on the same personal Google AI account worked.
 5. **Match `agy` wire format**: `loadCodeAssist` with `{ metadata: { ideType: "ANTIGRAVITY" } }` only; `onboardUser` with snake_case metadata; short `User-Agent: antigravity/1.21.9 linux/amd64` on generateContent (no Gemini-CLI `Client-Metadata`); G1/Dogfood generateContent on `daily-cloudcode-pa.googleapis.com`; discovery tries daily → prod → sandbox without aborting when `ineligibleTiers` sits next to an allowed/paid tier.
 6. **When `loadCodeAssist` returns `aicode-consumers`**: still call `onboardUser` (and a final daily free-tier onboard) so a *personal* managed project can be provisioned. Soft-continuing without a project made Google answer a misleading `429 RESOURCE_EXHAUSTED` even when the Google AI dashboard showed quota remaining (run `09d571524e4d`, account `flyvendee@gmail.com`).
 7. **Persist daily host**: if the personal project was provisioned on daily, flip `isDogfood` so `generateContent` uses the same surface.
+8. **Never request the `aicode` OAuth scope** (Antigravity API spec / working clients omit it). That scope routes personal Google AI accounts onto `aicode-consumers`. Existing panel connects must Disconnect + Connect again.
+9. **Body-only companion fallback**: if Google still only names `aicode-consumers` after onboard, send it as generateContent `project` **without** `x-goog-user-project` (the header is what triggered serviceUsageConsumer 403).
 
 Internal provider id stays `gemini-cli` for the `ai-auth` registry; user-facing strings say Antigravity.

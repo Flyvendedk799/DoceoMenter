@@ -55,6 +55,11 @@ export type ProviderCredential =
        * Never Google's enterprise shared project `aicode-consumers`.
        */
       projectId: string | null;
+      /**
+       * Shared companion project for body `project` only (never `x-goog-user-project`).
+       * Set when Google will not provision a personal managed project.
+       */
+      bodyOnlyProjectId?: string | null;
       plan: string | null;
       isDogfood?: boolean;
       source: "account" | "local-cli";
@@ -184,6 +189,7 @@ async function resolveGeminiSubscription(
         projectId: status.projectId,
         options,
         persist: async (discovery) => {
+          // Only persist header-safe personal projects — never aicode-consumers.
           await runtime.geminiAccounts.setProjectId(options.accountId!, discovery.projectId);
           if (discovery.isDogfood !== status.isDogfood) {
             await runtime.geminiAccounts.setIsDogfood(options.accountId!, discovery.isDogfood);
@@ -197,6 +203,7 @@ async function resolveGeminiSubscription(
         kind: "subscription",
         accessToken,
         projectId: discovered?.projectId ?? null,
+        bodyOnlyProjectId: discovered?.bodyOnlyProjectId ?? null,
         plan: status.email,
         isDogfood,
         source: "account",
@@ -225,6 +232,7 @@ async function resolveGeminiSubscription(
         kind: "subscription",
         accessToken,
         projectId: discovered?.projectId ?? null,
+        bodyOnlyProjectId: discovered?.bodyOnlyProjectId ?? null,
         plan: local.email,
         isDogfood: discovered?.isDogfood,
         source: "local-cli",
@@ -249,8 +257,16 @@ async function resolveManagedProject(input: {
   isDogfood?: boolean;
   projectId: string | null;
   options: ResolveOptions;
-  persist?: (discovery: { projectId: string | null; isDogfood: boolean }) => Promise<void>;
-}): Promise<{ projectId: string; isDogfood: boolean } | null> {
+  persist?: (discovery: {
+    projectId: string | null;
+    bodyOnlyProjectId?: string | null;
+    isDogfood: boolean;
+  }) => Promise<void>;
+}): Promise<{
+  projectId: string | null;
+  bodyOnlyProjectId?: string | null;
+  isDogfood: boolean;
+} | null> {
   const cleanedStored = sanitizePersonalCloudCodeProject(input.projectId);
   // Drop a previously persisted enterprise project so the next status read is honest.
   if (input.projectId && !cleanedStored && input.persist) {
@@ -264,7 +280,7 @@ async function resolveManagedProject(input: {
       projectId: cleanedStored,
       ...(input.options.fetchImpl ? { fetchImpl: input.options.fetchImpl } : {}),
     });
-    // Soft-fail paths return null (TOS / Dogfood skip / enterprise-only / HTTP error).
+    // Soft-fail paths return null (TOS / Dogfood skip / HTTP error with no shared companion).
     if (
       resolved &&
       input.persist &&
