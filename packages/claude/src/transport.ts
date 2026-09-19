@@ -189,6 +189,14 @@ function fail(error: unknown, options: TransportOptions, model: string): never {
         `Google returned RESOURCE_EXHAUSTED for Antigravity \`${model}\`, but DoceoMenter has no Cloud Code ` +
         `project for this login (agy discovers one automatically after Google login). Disconnect and ` +
         `Connect Antigravity again, then retry.${detail}`;
+    } else if (facts.status === 404 && options.credential.isDogfood === false) {
+      described =
+        `Antigravity does not know \`${model}\` on the non-G1 (prod) client. Disconnect and Connect ` +
+        `again — DoceoMenter always uses the personal Google AI / G1 client for this provider.${detail}`;
+    } else if (facts.status === 404) {
+      described =
+        `Antigravity does not know a model called \`${model}\` on this host. Disconnect and Connect ` +
+        `Antigravity again, then retry.${detail}`;
     }
   }
 
