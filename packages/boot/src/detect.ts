@@ -39,12 +39,15 @@ export function detectStrategy(a: Analysis, dockerEnabled = false): BootStrategy
     return { kind: "astro", pkgManager: detectPM(a), port: 5173 };
   }
 
-  // 4. Vite
-  if (pkg && pkg.devDeps.includes("vite") && hasFile(a, /^vite\.config\.(t|j|m)s$/)) {
-    return { kind: "vite", pkgManager: detectPM(a), port: 5173 };
-  }
-  if (pkg && pkg.deps.includes("vite") && hasFile(a, /^vite\.config\.(t|j|m)s$/)) {
-    return { kind: "vite", pkgManager: detectPM(a), port: 5173 };
+  // 4. Vite (root or nested monorepo app, e.g. CraftMagic apps/web)
+  const viteApp = findViteAppDir(a);
+  if (viteApp) {
+    return {
+      kind: "vite",
+      pkgManager: detectPM(a),
+      port: DEFAULT_PORT,
+      ...(viteApp !== "." ? { cwd: viteApp } : {}),
+    };
   }
 
   // 5. CRA
@@ -127,9 +130,15 @@ export function detectStrategy(a: Analysis, dockerEnabled = false): BootStrategy
 
 /** Prefer well-known prototype/site dirs with HTML; used by prompts for live routes. */
 export function findStaticHtmlDir(a: Analysis): string | undefined {
+  const allPaths = new Set(a.fileIndex.map((f) => f.path));
   const html = a.fileIndex
     .map((f) => f.path)
-    .filter((p) => /\.html?$/i.test(p) && !p.includes("node_modules/"));
+    .filter(
+      (p) =>
+        /\.html?$/i.test(p) &&
+        !p.includes("node_modules/") &&
+        !isBundlerSpaHtml(p, allPaths),
+    );
   if (html.length === 0) return undefined;
 
   if (html.includes("index.html")) return ".";
@@ -141,6 +150,9 @@ export function findStaticHtmlDir(a: Analysis): string | undefined {
     const slash = p.indexOf("/");
     if (slash < 0) continue;
     const top = p.slice(0, slash);
+    // Monorepo `apps/` is almost never a static prototype root — skip unless it
+    // also matches a known prototype dir name below (it does not).
+    if (top === "apps" || top === "packages") continue;
     const cur = counts.get(top) ?? { n: 0, files: [] };
     cur.n += 1;
     cur.files.push(p.slice(slash + 1));
@@ -161,6 +173,62 @@ export function findStaticHtmlDir(a: Analysis): string | undefined {
     }
   }
   return bestN >= 1 ? best : undefined;
+}
+
+/**
+ * Directory containing a Vite app (`.` or e.g. `apps/web`). Prefer apps/web,
+ * then other apps/*, then any vite.config in the tree.
+ */
+export function findViteAppDir(a: Analysis): string | undefined {
+  const pkg = a.manifests.nodePkg;
+  if (
+    pkg &&
+    (pkg.deps.includes("vite") || pkg.devDeps.includes("vite")) &&
+    hasFile(a, /^vite\.config\.(t|j|m)s$/)
+  ) {
+    return ".";
+  }
+
+  const configs = a.fileIndex
+    .map((f) => f.path)
+    .filter((p) => /(^|\/)vite\.config\.(t|j|m)s$/.test(p) && !p.includes("node_modules/"));
+  if (configs.length === 0) return undefined;
+
+  const rank = (p: string): number => {
+    if (p === "vite.config.ts" || p === "vite.config.js" || p === "vite.config.mjs") return 0;
+    if (/^apps\/web\//.test(p)) return 1;
+    if (/^web\//.test(p)) return 2;
+    if (/^apps\/[^/]+\//.test(p)) return 3;
+    if (/^client\//.test(p) || /^frontend\//.test(p)) return 4;
+    return 5;
+  };
+  configs.sort((x, y) => rank(x) - rank(y) || x.length - y.length);
+  const best = configs[0]!;
+  const slash = best.lastIndexOf("/");
+  return slash < 0 ? "." : best.slice(0, slash);
+}
+
+/** HTML entry next to a bundler config is a SPA shell, not a static prototype. */
+function isBundlerSpaHtml(htmlPath: string, allPaths: Set<string>): boolean {
+  const parts = htmlPath.split("/");
+  // Check this dir and ancestors for vite/next/astro config.
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const dir = parts.slice(0, i).join("/");
+    const prefix = dir ? `${dir}/` : "";
+    const markers = [
+      "vite.config.ts",
+      "vite.config.js",
+      "vite.config.mjs",
+      "vite.config.cjs",
+      "next.config.js",
+      "next.config.mjs",
+      "next.config.ts",
+      "astro.config.mjs",
+      "astro.config.ts",
+    ];
+    if (markers.some((m) => allPaths.has(`${prefix}${m}`))) return true;
+  }
+  return false;
 }
 
 /** Suggested live-app routes for a static HTML dir (Landing.html → /Landing.html). */

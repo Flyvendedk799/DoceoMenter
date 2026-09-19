@@ -81,10 +81,10 @@ export type Analysis = {
 };
 
 export type BootStrategy =
-  | { kind: "next"; pkgManager: "pnpm" | "npm" | "yarn"; port: number }
-  | { kind: "vite"; pkgManager: "pnpm" | "npm" | "yarn"; port: number }
-  | { kind: "cra"; pkgManager: "pnpm" | "npm" | "yarn"; port: number }
-  | { kind: "astro"; pkgManager: "pnpm" | "npm" | "yarn"; port: number }
+  | { kind: "next"; pkgManager: "pnpm" | "npm" | "yarn"; port: number; cwd?: string }
+  | { kind: "vite"; pkgManager: "pnpm" | "npm" | "yarn"; port: number; cwd?: string }
+  | { kind: "cra"; pkgManager: "pnpm" | "npm" | "yarn"; port: number; cwd?: string }
+  | { kind: "astro"; pkgManager: "pnpm" | "npm" | "yarn"; port: number; cwd?: string }
   | { kind: "node-server"; cmd: string; port: number; cwd?: string }
   | { kind: "python-web"; cmd: string; port: number }
   | { kind: "static"; dir: string; port: number }
