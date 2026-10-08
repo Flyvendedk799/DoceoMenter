@@ -15,6 +15,9 @@ export function SiteNav() {
   const pathname = usePathname() ?? "/";
   const runId = pathname.match(/^\/run\/([^/]+)/)?.[1];
   const onOutputs = Boolean(runId) && pathname.endsWith("/outputs");
+  const onDashboard = pathname.startsWith("/dashboard");
+
+  if (onDashboard) return null;
 
   const tabs: Array<{ label: string; href: string; active: boolean }> = [
     { label: "overview", href: "/", active: pathname === "/" },
