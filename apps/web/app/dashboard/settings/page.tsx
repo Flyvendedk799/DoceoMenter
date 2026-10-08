@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { User, Users, Key, Copy, Check, Plus } from "lucide-react";
+import { LayoutDashboard, FolderKanban, BarChart3, Settings, Bell, Search, User, Plus, Upload, FileText, ArrowUpRight, Clock, Users, Activity, Filter, Grid, List, MoreVertical, Folder, TrendingUp, Eye, Download, ChevronDown, Key, Copy, Check } from "../icons";
 
 export default function SettingsView() {
   const [activeTab, setActiveTab] = useState("profile");

@@ -1,5 +1,5 @@
 import React from "react";
-import { BarChart3, TrendingUp, Users, Eye, Download, ChevronDown } from "lucide-react";
+import { LayoutDashboard, FolderKanban, BarChart3, Settings, Bell, Search, User, Plus, Upload, FileText, ArrowUpRight, Clock, Users, Activity, Filter, Grid, List, MoreVertical, Folder, TrendingUp, Eye, Download, ChevronDown, Key, Copy, Check } from "../icons";
 
 export default function AnalyticsView() {
   return (

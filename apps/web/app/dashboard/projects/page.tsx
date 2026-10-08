@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Search, Filter, Grid, List, MoreVertical, Folder, Clock, FileText } from "lucide-react";
+import { LayoutDashboard, FolderKanban, BarChart3, Settings, Bell, Search, User, Plus, Upload, FileText, ArrowUpRight, Clock, Users, Activity, Filter, Grid, List, MoreVertical, Folder, TrendingUp, Eye, Download, ChevronDown, Key, Copy, Check } from "../icons";
 
 export default function ProjectsView() {
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
