@@ -59,7 +59,8 @@ export async function GET(req: Request) {
   }
 
   const rawIncludeMetrics = searchParams.get("includeMetrics");
-  const includeMetrics = rawIncludeMetrics === "false" ? false : true;
+  const includeMetrics =
+    rawIncludeMetrics === "false" || rawIncludeMetrics === "0" ? false : true;
 
   const options: ListRunsOptions = {
     limit,

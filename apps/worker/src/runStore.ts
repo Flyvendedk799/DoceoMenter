@@ -247,7 +247,7 @@ export class RunStore {
       filtered = filtered.filter((item) => {
         const url = (item.spec?.url ?? "").toLowerCase();
         if (url.includes(q)) return true;
-        const match = url.match(/github\.com\/([^/]+)\/([^/.]+)/);
+        const match = url.match(/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?(?:\/.*)?$/);
         if (match && match[1] && match[2]) {
           const owner = match[1];
           const repo = match[2];
