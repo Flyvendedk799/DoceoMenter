@@ -9,9 +9,14 @@ import {
   type RunJobData,
 } from "@doceomenter/worker";
 
+declare global {
+  // eslint-disable-next-line no-var
+  var __doceomenter_store: RunStore | undefined;
+  // eslint-disable-next-line no-var
+  var __doceomenter_localBus: RunEventBus | undefined;
+}
+
 let _config: ReturnType<typeof loadConfig> | undefined;
-let _store: RunStore | undefined;
-let _localBus: RunEventBus | undefined;
 let _redisBus: RunEventBus | undefined;
 let _queue: Queue<RunJobData> | undefined;
 let _redisReachable: Promise<boolean> | undefined;
@@ -25,14 +30,18 @@ export function getConfig() {
 }
 
 export function getStore() {
-  if (!_store) _store = new RunStore(getConfig().DATA_ROOT);
-  return _store;
+  if (!globalThis.__doceomenter_store) {
+    globalThis.__doceomenter_store = new RunStore(getConfig().DATA_ROOT);
+  }
+  return globalThis.__doceomenter_store;
 }
 
 export function getBus(useRedis = true) {
   if (!useRedis) {
-    if (!_localBus) _localBus = new RunEventBus(getStore());
-    return _localBus;
+    if (!globalThis.__doceomenter_localBus) {
+      globalThis.__doceomenter_localBus = new RunEventBus(getStore());
+    }
+    return globalThis.__doceomenter_localBus;
   }
 
   if (!_redisBus) {

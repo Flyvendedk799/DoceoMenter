@@ -23,6 +23,9 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       const send = (event: unknown) =>
         controller.enqueue(enc.encode(`data: ${JSON.stringify(event)}\n\n`));
 
+      let isClosed = false;
+      let isDone = false;
+
       // Initial snapshot — emit each stage as a stage event so the UI can
       // catch up to current status when reconnecting.
       for (const s of state.stages) send({ type: "stage", stage: s });
@@ -30,14 +33,37 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       // Always signal terminal state to late/reconnecting subscribers so the UI
       // resolves and the stream can close, even with no artifacts.
       if (TERMINAL_STATES.has(state.state)) {
+        isDone = true;
         send({ type: "done", state: state.state as TerminalState, artifacts: state.artifacts ?? {} });
       }
 
-      const off = bus.subscribe(runId, (e: RunEvent) => send(e));
+      const off = bus.subscribe(runId, (e: RunEvent) => {
+        if (isClosed) return;
+        if (e.type === "done") isDone = true;
+        send(e);
+      });
 
-      const heartbeat = setInterval(() => controller.enqueue(enc.encode(":\n\n")), 15_000);
+      const interval = setInterval(async () => {
+        if (isClosed) return;
+        try {
+          if (!isDone) {
+            const current = await store.read(runId);
+            if (current && TERMINAL_STATES.has(current.state)) {
+              isDone = true;
+              send({
+                type: "done",
+                state: current.state as TerminalState,
+                artifacts: current.artifacts ?? {},
+              });
+            }
+          }
+          controller.enqueue(enc.encode(":\n\n"));
+        } catch {}
+      }, 2_000);
+
       _req.signal.addEventListener("abort", () => {
-        clearInterval(heartbeat);
+        isClosed = true;
+        clearInterval(interval);
         off();
         try { controller.close(); } catch {}
       });
