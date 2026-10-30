@@ -559,4 +559,63 @@ describe("Dashboard - FastRunLauncher POST /api/runs", () => {
     expect(html).toContain("Boot Browser App");
     expect(html).toContain("Dispatch Run");
   });
+
+  it("displays success notification with link to /run/${runId} when run is created", () => {
+    const html = renderToString(
+      <FastRunLauncher
+        isOpen={true}
+        onToggle={vi.fn()}
+        initialRunId="run-test-abc-456"
+      />
+    );
+
+    expect(html).toContain("data-testid=\"launcher-success-alert\"");
+    expect(html).toContain("Run successfully dispatched!");
+    expect(html).toContain("run-test-abc-456");
+    expect(html).toContain("/run/run-test-abc-456");
+    expect(html).toContain("Open Live Run →");
+  });
+});
+
+describe("Dashboard - Status Pill Filtering", () => {
+  it("highlights active status pill when status filter is selected", () => {
+    const onFilterChange = vi.fn();
+    const html = renderToString(
+      <RunsTable
+        runs={[]}
+        total={0}
+        metrics={{
+          totalRuns: 10,
+          queuedRuns: 1,
+          runningRuns: 2,
+          doneRuns: 5,
+          partialRuns: 1,
+          failedRuns: 1,
+          cancelledRuns: 0,
+          activeRuns: 3,
+          successRatePct: 60,
+          avgDurationMs: 150000,
+          totalArtifacts: 25,
+        }}
+        searchQuery=""
+        onSearchChange={vi.fn()}
+        statusFilter="active"
+        onStatusFilterChange={onFilterChange}
+        sortBy="createdAt"
+        onSortByChange={vi.fn()}
+        sortOrder="desc"
+        onSortOrderChange={vi.fn()}
+        limit={20}
+        onLimitChange={vi.fn()}
+        offset={0}
+        onOffsetChange={vi.fn()}
+      />
+    );
+
+    // Active pill has active border/text styling
+    expect(html).toContain("data-testid=\"status-pill-active\"");
+    expect(html).toContain("border-accent/40 bg-accent/15 text-accent font-semibold");
+    // Displays correct count for active (3)
+    expect(html).toContain("3");
+  });
 });

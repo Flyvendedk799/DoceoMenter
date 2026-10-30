@@ -25,6 +25,7 @@ export interface FastRunLauncherProps {
   isOpen?: boolean;
   onToggle?: () => void;
   onRunCreated?: (runId: string) => void;
+  initialRunId?: string | null;
 }
 
 export async function dispatchRun(spec: {
@@ -65,6 +66,7 @@ export function FastRunLauncher({
   isOpen,
   onToggle,
   onRunCreated,
+  initialRunId = null,
 }: FastRunLauncherProps) {
   const [internalOpen, setInternalOpen] = useState(false);
   const open = isOpen !== undefined ? isOpen : internalOpen;
@@ -79,7 +81,7 @@ export function FastRunLauncher({
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lastCreatedRunId, setLastCreatedRunId] = useState<string | null>(null);
+  const [lastCreatedRunId, setLastCreatedRunId] = useState<string | null>(initialRunId);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
