@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
-import { RunSpecSchema } from "@doceomenter/shared";
+import { RunSpecSchema, type ListRunsOptions } from "@doceomenter/shared";
 import { getBus, getQueue, getStore, getConfig, isRedisReachable } from "../../../lib/server";
 import { resolveCaller, withAccountCookie } from "../../../lib/auth";
 import { initialRunState, runPipeline } from "@doceomenter/worker";
@@ -12,6 +12,69 @@ export const dynamic = "force-dynamic";
 // so an unauthenticated request loop can't exhaust CPU / file descriptors.
 const MAX_INPROCESS_RUNS = 3;
 let inProcessRuns = 0;
+
+const VALID_STATUSES = [
+  "all",
+  "active",
+  "queued",
+  "running",
+  "done",
+  "partial",
+  "failed",
+  "cancelled",
+] as const;
+type AllowedStatus = (typeof VALID_STATUSES)[number];
+
+export async function GET(req: Request) {
+  const url = new URL(req.url, "http://localhost");
+  const { searchParams } = url;
+
+  const rawLimit = searchParams.get("limit");
+  let limit = rawLimit !== null ? parseInt(rawLimit, 10) : 20;
+  if (Number.isNaN(limit)) limit = 20;
+  limit = Math.min(100, Math.max(1, limit));
+
+  const rawOffset = searchParams.get("offset");
+  let offset = rawOffset !== null ? parseInt(rawOffset, 10) : 0;
+  if (Number.isNaN(offset) || offset < 0) offset = 0;
+
+  const rawStatus = searchParams.get("status") ?? undefined;
+  let status: AllowedStatus | undefined;
+  if (rawStatus && (VALID_STATUSES as readonly string[]).includes(rawStatus)) {
+    status = rawStatus as AllowedStatus;
+  }
+
+  const q = searchParams.get("q") || undefined;
+
+  const rawSortBy = searchParams.get("sortBy");
+  let sortBy: "createdAt" | "updatedAt" | "duration" = "createdAt";
+  if (rawSortBy === "createdAt" || rawSortBy === "updatedAt" || rawSortBy === "duration") {
+    sortBy = rawSortBy;
+  }
+
+  const rawSortOrder = searchParams.get("sortOrder");
+  let sortOrder: "asc" | "desc" = "desc";
+  if (rawSortOrder === "asc" || rawSortOrder === "desc") {
+    sortOrder = rawSortOrder;
+  }
+
+  const rawIncludeMetrics = searchParams.get("includeMetrics");
+  const includeMetrics = rawIncludeMetrics === "false" ? false : true;
+
+  const options: ListRunsOptions = {
+    limit,
+    offset,
+    status,
+    q,
+    sortBy,
+    sortOrder,
+    includeMetrics,
+  };
+
+  const store = getStore();
+  const result = await store.list(options);
+  return NextResponse.json(result);
+}
 
 export async function POST(req: Request) {
   // Resolved before anything else so the run is tied to the browser that started it: the
