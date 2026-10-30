@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile, rename, readdir } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rename, readdir, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
@@ -16,7 +16,16 @@ import type {
 } from "@doceomenter/shared";
 import { STAGE_NAMES, redactSpec, RUN_ID_RE } from "@doceomenter/shared";
 
+/** How many state.json files `list` reads at once when its summary cache is cold. */
+const LIST_READ_CONCURRENCY = 16;
+
+type RunSummary = { item: RunListItem; owner: string | undefined };
+type CachedSummary = { mtimeMs: number; size: number; summary: RunSummary | undefined };
+
 export class RunStore {
+  /** Per-run list summaries, valid while state.json's mtime and size are unchanged. */
+  private readonly summaries = new Map<string, CachedSummary>();
+
   constructor(private readonly root: string) {}
 
   runDir(runId: string): string {
@@ -38,6 +47,9 @@ export class RunStore {
     const tmp = `${target}.${randomBytes(4).toString("hex")}.tmp`;
     await writeFile(tmp, JSON.stringify(state, null, 2));
     await rename(tmp, target);
+    // Writes from this process drop the cached summary outright; writes from another process
+    // (the queue worker) are caught by the mtime/size check in `summary`.
+    this.summaries.delete(runId);
   }
 
   async read(runId: string): Promise<RunState | undefined> {
@@ -97,80 +109,20 @@ export class RunStore {
       .filter((entry) => RUN_ID_RE.test(entry.name))
       .map((entry) => entry.name);
 
-    // 3. Read each run using this.read(runId). If state is missing or corrupt, silently skip without throwing.
-    const states = (
-      await Promise.all(
-        runIds.map(async (id) => {
-          try {
-            const state = await this.read(id);
-            if (!isValidRunState(state)) return undefined;
-            return state;
-          } catch {
-            return undefined;
-          }
-        }),
-      )
-    ).filter((s): s is RunState => s !== undefined);
-
-    // 4 & 5. Compute durationMs and stageSummary for each valid run
+    // 3. Summarise each run. Summaries are cached per run and keyed by state.json's mtime and
+    //    size, so a poll only re-reads runs that changed since the last listing, and the reads
+    //    that do happen are bounded rather than one open file per stored run at once.
+    const summaries = await mapBounded(runIds, LIST_READ_CONCURRENCY, (id) => this.summary(id));
+    const ownerFilter =
+      options && options.ownerAccountId !== undefined ? options.ownerAccountId : undefined;
     const allItems: RunListItem[] = [];
-    for (const state of states) {
-      try {
-        if (!isValidRunState(state)) continue;
-
-        const start = new Date(state.createdAt).getTime();
-        const end = new Date(state.updatedAt).getTime();
-        const durationMs = Math.max(
-          0,
-          Number.isFinite(end) && Number.isFinite(start) ? end - start : 0,
-        );
-
-        const stages = Array.isArray(state.stages) ? state.stages : [];
-        let resolved = 0;
-        let failed = 0;
-        let runningStage: StageName | undefined;
-        let lastResolvedStage: StageName | undefined;
-
-        for (const stage of stages) {
-          if (!stage || typeof stage !== "object") continue;
-          if (stage.status === "running") {
-            if (!runningStage) {
-              runningStage = stage.name;
-            }
-          } else if (
-            stage.status === "done" ||
-            stage.status === "degraded" ||
-            stage.status === "skipped"
-          ) {
-            resolved++;
-            lastResolvedStage = stage.name;
-          } else if (stage.status === "failed") {
-            failed++;
-          }
-        }
-
-        const stageSummary: RunStageSummary = {
-          total: Array.isArray(state.stages) ? state.stages.length : 10,
-          resolved,
-          failed,
-          current: runningStage ?? lastResolvedStage,
-        };
-
-        allItems.push({
-          runId: state.runId,
-          spec: state.spec,
-          state: state.state,
-          createdAt: state.createdAt,
-          updatedAt: state.updatedAt,
-          durationMs,
-          provider: state.provider,
-          artifacts: state.artifacts,
-          error: state.error,
-          stageSummary,
-        });
-      } catch {
+    for (const summary of summaries) {
+      if (!summary) continue;
+      // `null` (a caller without an account) matches nothing: legacy runs have no owner either.
+      if (ownerFilter !== undefined && (ownerFilter === null || summary.owner !== ownerFilter)) {
         continue;
       }
+      allItems.push(summary.item);
     }
 
     // 6. Calculate aggregate RunMetrics across all valid runs:
@@ -253,12 +205,15 @@ export class RunStore {
       }
     }
 
-    // 8. Filter by q (case-insensitive substring match on state.spec.url or repository owner/name).
+    // 8. Filter by q (case-insensitive substring match on state.spec.url, repository
+    //    owner/name, or the branch/ref the run was started for).
     if (options?.q && options.q.trim()) {
       const q = options.q.trim().toLowerCase();
       filtered = filtered.filter((item) => {
         const url = (item.spec?.url ?? "").toLowerCase();
         if (url.includes(q)) return true;
+        const ref = typeof item.spec?.ref === "string" ? item.spec.ref.toLowerCase() : "";
+        if (ref && ref.includes(q)) return true;
         const match = url.match(/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?(?:\/.*)?$/);
         if (match && match[1] && match[2]) {
           const owner = match[1];
@@ -309,6 +264,33 @@ export class RunStore {
     };
   }
 
+  /** The list row for one run, from cache when its state.json has not changed. */
+  private async summary(runId: string): Promise<RunSummary | undefined> {
+    const file = join(this.runDir(runId), "state.json");
+    let mtimeMs: number;
+    let size: number;
+    try {
+      const info = await stat(file);
+      mtimeMs = info.mtimeMs;
+      size = info.size;
+    } catch {
+      this.summaries.delete(runId);
+      return undefined;
+    }
+    const cached = this.summaries.get(runId);
+    if (cached && cached.mtimeMs === mtimeMs && cached.size === size) return cached.summary;
+
+    let summary: RunSummary | undefined;
+    try {
+      const state = await this.read(runId);
+      summary = state ? { item: toListItem(state), owner: state.ownerAccountId } : undefined;
+    } catch {
+      summary = undefined;
+    }
+    this.summaries.set(runId, { mtimeMs, size, summary });
+    return summary;
+  }
+
   async appendLog(runId: string, line: string): Promise<void> {
     const dir = await this.ensure(runId);
     const stamp = new Date().toISOString();
@@ -324,6 +306,78 @@ export class RunStore {
       { flag: "a" },
     );
   }
+}
+
+/** The dashboard row for one stored run: duration and a stage roll-up, no logs or assets. */
+function toListItem(state: RunState): RunListItem {
+  const start = new Date(state.createdAt).getTime();
+  const end = new Date(state.updatedAt).getTime();
+  const durationMs = Math.max(
+    0,
+    Number.isFinite(end) && Number.isFinite(start) ? end - start : 0,
+  );
+
+  const stages = Array.isArray(state.stages) ? state.stages : [];
+  let resolved = 0;
+  let failed = 0;
+  let runningStage: StageName | undefined;
+  let lastResolvedStage: StageName | undefined;
+
+  for (const stage of stages) {
+    if (!stage || typeof stage !== "object") continue;
+    if (stage.status === "running") {
+      if (!runningStage) {
+        runningStage = stage.name;
+      }
+    } else if (
+      stage.status === "done" ||
+      stage.status === "degraded" ||
+      stage.status === "skipped"
+    ) {
+      resolved++;
+      lastResolvedStage = stage.name;
+    } else if (stage.status === "failed") {
+      failed++;
+    }
+  }
+
+  const stageSummary: RunStageSummary = {
+    total: Array.isArray(state.stages) ? state.stages.length : 10,
+    resolved,
+    failed,
+    current: runningStage ?? lastResolvedStage,
+  };
+
+  return {
+    runId: state.runId,
+    spec: state.spec,
+    state: state.state,
+    createdAt: state.createdAt,
+    updatedAt: state.updatedAt,
+    durationMs,
+    provider: state.provider,
+    artifacts: state.artifacts,
+    error: state.error,
+    stageSummary,
+  };
+}
+
+/** `Promise.all(items.map(fn))` with at most `limit` calls in flight. Keeps result order. */
+async function mapBounded<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await fn(items[index] as T);
+    }
+  });
+  await Promise.all(workers);
+  return results;
 }
 
 export function initialRunState(runId: string, spec: RunSpec, now = new Date()): RunState {

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { RunState } from "./types.js";
 
 /** A git ref (branch, tag, or commit SHA) safe to pass as an argv operand. */
 export const GitRefSchema = z
@@ -132,6 +133,16 @@ export function isValidRunId(id: string): boolean {
 export function redactSpec(spec: RunSpec): RunSpec {
   if (spec.apiKey === undefined) return spec;
   const { apiKey: _omit, ...rest } = spec;
+  return rest;
+}
+
+/**
+ * A run state fit to hand to a client: without the owning account id, which is only used
+ * server-side to scope listings.
+ */
+export function publicRunState(state: RunState): RunState {
+  if (state.ownerAccountId === undefined) return state;
+  const { ownerAccountId: _omit, ...rest } = state;
   return rest;
 }
 

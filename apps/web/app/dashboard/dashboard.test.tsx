@@ -15,7 +15,13 @@ import {
   shouldPoll,
   POLLING_INTERVAL_MS,
 } from "../../components/dashboard/RunsTable";
-import { FastRunLauncher, dispatchRun } from "../../components/dashboard/FastRunLauncher";
+import {
+  FastRunLauncher,
+  dispatchRun,
+  providerWarning,
+  resolveLauncherChoice,
+} from "../../components/dashboard/FastRunLauncher";
+import { RunsFeed, type RunsFeedState, type RunsQuery } from "../../components/dashboard/runsFeed";
 import type { RunListItem, RunMetrics } from "../../components/dashboard/types";
 import type { AuthStatus } from "@doceomenter/auth";
 
@@ -450,33 +456,141 @@ describe("Dashboard - Polling Behavior", () => {
     ).toBe(false);
   });
 
-  it("simulates 10-second polling interval execution", () => {
+});
+
+/**
+ * The dashboard page delegates fetching and polling to `RunsFeed` (one per mounted page), so
+ * these drive that exact object with a controlled fetch and fake timers.
+ */
+describe("Dashboard - RunsFeed fetching & polling", () => {
+  type Deferred = { resolve: (body: unknown) => void; reject: (err: Error) => void };
+
+  /** A fetch whose responses are released by the test, in whatever order it chooses. */
+  function controlledFetch() {
+    const calls: Array<{ url: string; signal?: AbortSignal | null } & Deferred> = [];
+    const fetchImpl = vi.fn((url: string, init?: RequestInit) => {
+      return new Promise<Response>((resolve, reject) => {
+        calls.push({
+          url,
+          signal: init?.signal,
+          resolve: (body) =>
+            resolve({ ok: true, status: 200, json: async () => body } as unknown as Response),
+          reject,
+        });
+      });
+    });
+    return { calls, fetchImpl: fetchImpl as unknown as typeof fetch };
+  }
+
+  const page = (runs: Array<Partial<RunListItem>>, activeRuns = 0) => ({
+    runs,
+    total: runs.length,
+    limit: 20,
+    offset: 0,
+    metrics: { activeRuns } as RunMetrics,
+  });
+
+  const baseQuery: RunsQuery = {
+    limit: 20,
+    offset: 0,
+    status: "all",
+    q: "",
+    sortBy: "createdAt",
+    sortOrder: "desc",
+  };
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("polls every 10s with the current filters while a run is active, and stops once none is", async () => {
     vi.useFakeTimers();
-    const fetchSpy = vi.fn();
+    const { calls, fetchImpl } = controlledFetch();
+    const states: RunsFeedState[] = [];
+    const feed = new RunsFeed((s) => states.push(s), fetchImpl);
 
-    // Start interval when active
-    const active = true;
-    let intervalId: any;
-    if (active) {
-      intervalId = setInterval(fetchSpy, POLLING_INTERVAL_MS);
-    }
+    const first = feed.setQuery({ ...baseQuery, status: "active", q: "acme" });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toBe(
+      "/api/runs?limit=20&offset=0&status=active&q=acme&sortBy=createdAt&sortOrder=desc&includeMetrics=true",
+    );
+    calls[0]!.resolve(page([{ runId: "a", state: "running" }], 1));
+    await first;
+    expect(states.at(-1)?.polling).toBe(true);
+    expect(states.at(-1)?.loading).toBe(false);
 
-    expect(fetchSpy).not.toHaveBeenCalled();
+    // Nothing before the interval elapses, one poll when it does, with the same filters.
+    await vi.advanceTimersByTimeAsync(POLLING_INTERVAL_MS - 1);
+    expect(calls).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(calls).toHaveLength(2);
+    expect(calls[1]!.url).toBe(calls[0]!.url);
 
-    // Advance 5s (halfway)
-    vi.advanceTimersByTime(5000);
-    expect(fetchSpy).not.toHaveBeenCalled();
+    // The run finishes: the poll's result turns polling off and no further requests go out.
+    calls[1]!.resolve(page([{ runId: "a", state: "done" }], 0));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(states.at(-1)?.polling).toBe(false);
+    expect(states.at(-1)?.runs[0]?.state).toBe("done");
+    await vi.advanceTimersByTimeAsync(POLLING_INTERVAL_MS * 3);
+    expect(calls).toHaveLength(2);
 
-    // Advance another 5s (10s total)
-    vi.advanceTimersByTime(5000);
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    feed.dispose();
+  });
 
-    // Advance another 10s (20s total)
-    vi.advanceTimersByTime(10000);
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  it("drops an older response that lands after a newer filter's response", async () => {
+    const { calls, fetchImpl } = controlledFetch();
+    const states: RunsFeedState[] = [];
+    const feed = new RunsFeed((s) => states.push(s), fetchImpl);
 
-    clearInterval(intervalId);
-    vi.restoreAllMocks();
+    const all = feed.setQuery(baseQuery);
+    const failed = feed.setQuery({ ...baseQuery, status: "failed" });
+    expect(calls[0]!.signal?.aborted).toBe(true); // the superseded request is cancelled
+
+    calls[1]!.resolve(page([{ runId: "f", state: "failed" }]));
+    await failed;
+    // The "All" response still arrives late (the abort came too late): it must not win.
+    calls[0]!.resolve(page([{ runId: "x", state: "done" }, { runId: "y", state: "done" }]));
+    await all;
+
+    const last = states.at(-1)!;
+    expect(last.runs.map((r) => r.runId)).toEqual(["f"]);
+    expect(last.total).toBe(1);
+    expect(last.loading).toBe(false);
+    feed.dispose();
+  });
+
+  it("ignores a superseded request's failure and reports the current one's", async () => {
+    const { calls, fetchImpl } = controlledFetch();
+    const states: RunsFeedState[] = [];
+    const feed = new RunsFeed((s) => states.push(s), fetchImpl);
+
+    const older = feed.setQuery(baseQuery);
+    const newer = feed.setQuery({ ...baseQuery, offset: 20 });
+    calls[0]!.reject(new Error("aborted"));
+    await older;
+    expect(states.at(-1)?.error).toBeNull();
+
+    calls[1]!.reject(new Error("network down"));
+    await newer;
+    expect(states.at(-1)?.error).toBe("network down");
+    feed.dispose();
+  });
+
+  it("stops polling and updating once disposed (page unmounted)", async () => {
+    vi.useFakeTimers();
+    const { calls, fetchImpl } = controlledFetch();
+    const onChange = vi.fn();
+    const feed = new RunsFeed(onChange, fetchImpl);
+
+    const first = feed.setQuery(baseQuery);
+    calls[0]!.resolve(page([{ runId: "a", state: "queued" }], 1));
+    await first;
+    feed.dispose();
+    onChange.mockClear();
+
+    await vi.advanceTimersByTimeAsync(POLLING_INTERVAL_MS * 2);
+    expect(calls).toHaveLength(1);
+    expect(onChange).not.toHaveBeenCalled();
   });
 });
 
@@ -574,6 +688,61 @@ describe("Dashboard - FastRunLauncher POST /api/runs", () => {
     expect(html).toContain("run-test-abc-456");
     expect(html).toContain("/run/run-test-abc-456");
     expect(html).toContain("Open Live Run →");
+  });
+});
+
+describe("Dashboard - FastRunLauncher provider choice", () => {
+  const provider = (id: string, ready: boolean, label: string, defaultModel: string) =>
+    ({ id, ready, label, defaultModel }) as unknown as AuthStatus["providers"][number];
+  const status = {
+    providers: [
+      provider("anthropic", false, "Anthropic API key", "claude-sonnet-5"),
+      provider("claude-code", false, "Claude Code", "claude-opus-5"),
+      provider("codex", true, "Codex", "gpt-5.5-codex"),
+    ],
+  };
+
+  it("keeps the browser's saved provider preference", () => {
+    expect(
+      resolveLauncherChoice({ provider: "claude-code", model: "claude-opus-5" }, status),
+    ).toEqual({ provider: "claude-code", model: "claude-opus-5" });
+  });
+
+  it("opens on the first ready provider instead of an unconfigured Anthropic key", () => {
+    expect(resolveLauncherChoice(null, status)).toEqual({
+      provider: "codex",
+      model: "gpt-5.5-codex",
+    });
+  });
+
+  it("falls back to anthropic only when nothing is known or ready", () => {
+    expect(resolveLauncherChoice(null, null)).toEqual({ provider: "anthropic" });
+    expect(resolveLauncherChoice(null, { providers: [status.providers[0]!] })).toEqual({
+      provider: "anthropic",
+    });
+  });
+
+  it("warns before dispatching with a provider that is not set up", () => {
+    expect(providerWarning("anthropic", status)).toMatch(
+      /Anthropic API key is not set up.*fixture output/,
+    );
+    expect(providerWarning("codex", status)).toBeNull();
+    expect(providerWarning("anthropic", null)).toBeNull();
+  });
+
+  it("sends the chosen model along with the provider", async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValue({ ok: true, status: 200, json: async () => ({ runId: "r1" }) });
+    vi.stubGlobal("fetch", mockFetch);
+    await dispatchRun({
+      url: "https://github.com/flyvendedk799/doceomenter",
+      provider: "codex",
+      model: "gpt-5.5-codex",
+    });
+    const body = JSON.parse(mockFetch.mock.calls[0]![1].body as string);
+    expect(body).toMatchObject({ provider: "codex", model: "gpt-5.5-codex" });
+    vi.unstubAllGlobals();
   });
 });
 

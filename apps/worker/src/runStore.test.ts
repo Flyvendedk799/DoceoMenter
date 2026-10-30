@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -399,6 +399,83 @@ describe("RunStore", () => {
 
       const result = await store.list({ includeMetrics: false });
       expect(result.metrics).toBeUndefined();
+    });
+
+    it("matches the search query against the branch/ref alone", async () => {
+      const store = tmpStore();
+      const onBranch = initialRunState("700000000001", {
+        url: "https://github.com/owner/alpha",
+        ref: "release-dashboard",
+      });
+      const onMain = initialRunState("700000000002", {
+        url: "https://github.com/owner/beta",
+        ref: "main",
+      });
+      await store.write(onBranch.runId, onBranch);
+      await store.write(onMain.runId, onMain);
+
+      const result = await store.list({ q: "Release-Dash" });
+      expect(result.runs.map((r) => r.runId)).toEqual(["700000000001"]);
+      expect(result.total).toBe(1);
+    });
+
+    it("scopes runs and metrics to ownerAccountId, and lists nothing for a null owner", async () => {
+      const store = tmpStore();
+      const mine = { ...initialRunState("800000000001", spec), ownerAccountId: "acct-mine" };
+      mine.state = "done";
+      const theirs = { ...initialRunState("800000000002", spec), ownerAccountId: "acct-theirs" };
+      theirs.state = "failed";
+      const legacy = initialRunState("800000000003", spec); // no owner recorded
+      await store.write(mine.runId, mine);
+      await store.write(theirs.runId, theirs);
+      await store.write(legacy.runId, legacy);
+
+      const own = await store.list({ ownerAccountId: "acct-mine" });
+      expect(own.runs.map((r) => r.runId)).toEqual(["800000000001"]);
+      expect(own.metrics?.totalRuns).toBe(1);
+      expect(own.metrics?.failedRuns).toBe(0);
+      // The owner id is a server-side scoping key and never part of a list row.
+      expect(own.runs[0]).not.toHaveProperty("ownerAccountId");
+
+      const anonymous = await store.list({ ownerAccountId: null });
+      expect(anonymous.runs).toEqual([]);
+      expect(anonymous.metrics?.totalRuns).toBe(0);
+
+      const unscoped = await store.list();
+      expect(unscoped.total).toBe(3);
+    });
+
+    it("re-reads only runs whose state changed since the last listing", async () => {
+      const store = tmpStore();
+      const a = initialRunState("900000000001", spec);
+      const b = initialRunState("900000000002", spec);
+      await store.write(a.runId, a);
+      await store.write(b.runId, b);
+
+      const readSpy = vi.spyOn(store, "read");
+      await store.list();
+      expect(readSpy).toHaveBeenCalledTimes(2);
+
+      readSpy.mockClear();
+      await store.list({ limit: 1 });
+      expect(readSpy).not.toHaveBeenCalled();
+
+      // A write through the store invalidates that run only.
+      a.state = "running";
+      await store.write(a.runId, a);
+      readSpy.mockClear();
+      const afterWrite = await store.list();
+      expect(readSpy).toHaveBeenCalledTimes(1);
+      expect(readSpy).toHaveBeenCalledWith("900000000001");
+      expect(afterWrite.runs.find((r) => r.runId === a.runId)?.state).toBe("running");
+
+      // A write from another process (straight to disk) is caught by the size/mtime check.
+      const external = { ...b, state: "failed" as const, error: "worker crashed while booting" };
+      writeFileSync(join(store.runDir(b.runId), "state.json"), JSON.stringify(external));
+      readSpy.mockClear();
+      const afterExternal = await store.list();
+      expect(readSpy).toHaveBeenCalledWith("900000000002");
+      expect(afterExternal.runs.find((r) => r.runId === b.runId)?.state).toBe("failed");
     });
   });
 });

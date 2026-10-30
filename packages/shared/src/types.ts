@@ -137,6 +137,12 @@ export type RunState = {
     zip?: string;
   };
   error?: string;
+  /**
+   * The browser account (see the web app's account cookie) that started this run. It is what
+   * scopes the dashboard listing to the caller's own runs. Server-side only: strip it with
+   * `publicRunState` before a state leaves the server.
+   */
+  ownerAccountId?: string;
 };
 
 export type CaptureManifestEntry = {
@@ -187,6 +193,11 @@ export type ListRunsOptions = {
   sortBy?: "createdAt" | "updatedAt" | "duration"; // default createdAt
   sortOrder?: "asc" | "desc"; // default desc
   includeMetrics?: boolean; // default true
+  /**
+   * Only list runs started by this account. `null` means "a caller with no account", which
+   * owns nothing and so lists nothing. Omit to list every run (worker/admin use only).
+   */
+  ownerAccountId?: string | null;
 };
 
 export type RunStageSummary = {

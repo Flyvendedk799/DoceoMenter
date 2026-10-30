@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
 import { RunSpecSchema, type ListRunsOptions } from "@doceomenter/shared";
 import { getBus, getQueue, getStore, getConfig, isRedisReachable } from "../../../lib/server";
-import { resolveCaller, withAccountCookie } from "../../../lib/auth";
+import { currentAccountId, resolveCaller, withAccountCookie } from "../../../lib/auth";
 import { initialRunState, runPipeline } from "@doceomenter/worker";
 
 export const runtime = "nodejs";
@@ -62,7 +62,13 @@ export async function GET(req: Request) {
   const includeMetrics =
     rawIncludeMetrics === "false" || rawIncludeMetrics === "0" ? false : true;
 
+  // Runs are scoped to the browser that started them (the same account cookie POST ties each
+  // run to), so the list and its metrics never become a catalogue of other visitors' runs. A
+  // caller without a cookie owns nothing yet and gets an empty list; no cookie is minted here.
+  const ownerAccountId = await currentAccountId(req);
+
   const options: ListRunsOptions = {
+    ownerAccountId,
     limit,
     offset,
     status,
@@ -99,7 +105,7 @@ export async function POST(req: Request) {
   const spec = parsed.data;
   const runId = generateRunId();
   const store = getStore();
-  await store.write(runId, initialRunState(runId, spec));
+  await store.write(runId, { ...initialRunState(runId, spec), ownerAccountId: caller.accountId });
 
   // Two paths:
   //  - In container/queue mode: enqueue on BullMQ.

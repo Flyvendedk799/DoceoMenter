@@ -1,19 +1,20 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import type { ListRunsResponse, RunListItem, RunMetrics } from "../../components/dashboard/types";
 import { KpiStrip } from "../../components/dashboard/KpiStrip";
 import { ProviderStatusWidget } from "../../components/dashboard/ProviderStatusWidget";
 import { FastRunLauncher } from "../../components/dashboard/FastRunLauncher";
-import { RunsTable, shouldPoll, POLLING_INTERVAL_MS } from "../../components/dashboard/RunsTable";
+import { RunsTable, shouldPoll } from "../../components/dashboard/RunsTable";
+import {
+  INITIAL_RUNS_FEED_STATE,
+  RunsFeed,
+  type RunsFeedState,
+} from "../../components/dashboard/runsFeed";
 import { MediaSpotlight } from "../../components/dashboard/MediaSpotlight";
 
 export default function DashboardPage() {
-  const [runs, setRuns] = useState<RunListItem[]>([]);
-  const [total, setTotal] = useState(0);
-  const [metrics, setMetrics] = useState<RunMetrics | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [feed, setFeed] = useState<RunsFeedState>(INITIAL_RUNS_FEED_STATE);
+  const { runs, total, metrics, loading, error } = feed;
 
   // Filters & Pagination state
   const [searchQuery, setSearchQuery] = useState("");
@@ -29,65 +30,32 @@ export default function DashboardPage() {
   // Refresh trigger counter
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-  const fetchRuns = useCallback(async (isPolling = false) => {
-    if (!isPolling) setLoading(true);
-    setError(null);
-    try {
-      const params = new URLSearchParams();
-      params.set("limit", String(limit));
-      params.set("offset", String(offset));
-      if (statusFilter !== "all") {
-        params.set("status", statusFilter);
-      }
-      if (searchQuery.trim()) {
-        params.set("q", searchQuery.trim());
-      }
-      params.set("sortBy", sortBy);
-      params.set("sortOrder", sortOrder);
-      params.set("includeMetrics", "true");
-
-      const res = await fetch(`/api/runs?${params.toString()}`, {
-        credentials: "same-origin",
-      });
-
-      if (!res.ok) {
-        throw new Error(`Failed to fetch runs: HTTP ${res.status}`);
-      }
-
-      const data = (await res.json()) as ListRunsResponse;
-      setRuns(data.runs || []);
-      setTotal(data.total ?? 0);
-      if (data.metrics) {
-        setMetrics(data.metrics);
-      }
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      if (!isPolling) setLoading(false);
-    }
-  }, [limit, offset, statusFilter, searchQuery, sortBy, sortOrder]);
+  // One feed per mounted page: it drops responses that a newer request has superseded, and
+  // polls every 10s only while some run is still queued or running.
+  const feedRef = useRef<RunsFeed | null>(null);
+  useEffect(() => {
+    const runsFeed = new RunsFeed(setFeed);
+    feedRef.current = runsFeed;
+    return () => {
+      runsFeed.dispose();
+      if (feedRef.current === runsFeed) feedRef.current = null;
+    };
+  }, []);
 
   // Initial and reactive fetch on query / filter / pagination changes
   useEffect(() => {
-    void fetchRuns(false);
-  }, [fetchRuns, refreshTrigger]);
+    void feedRef.current?.setQuery({
+      limit,
+      offset,
+      status: statusFilter,
+      q: searchQuery,
+      sortBy,
+      sortOrder,
+    });
+  }, [limit, offset, statusFilter, searchQuery, sortBy, sortOrder, refreshTrigger]);
 
-  // Determine if active runs exist (queued or running)
-  const hasActiveRuns = shouldPoll(runs, metrics);
-
-  // Auto-polling: 10 seconds interval when active runs exist
-  const fetchRunsRef = useRef(fetchRuns);
-  fetchRunsRef.current = fetchRuns;
-
-  useEffect(() => {
-    if (!hasActiveRuns) return;
-
-    const intervalId = setInterval(() => {
-      void fetchRunsRef.current(true);
-    }, 10000);
-
-    return () => clearInterval(intervalId);
-  }, [hasActiveRuns]);
+  // Whether active runs exist (queued or running), which is what keeps the feed polling
+  const hasActiveRuns = feed.polling || shouldPoll(runs, metrics);
 
   const handleRunCreated = useCallback((_runId: string) => {
     setRefreshTrigger((prev) => prev + 1);

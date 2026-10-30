@@ -1,8 +1,15 @@
 "use client";
 
-import React, { useState, type FormEvent } from "react";
+import React, { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
+import type { AuthStatus } from "@doceomenter/auth";
 import type { AiProvider } from "@doceomenter/shared";
+import {
+  firstReadyProvider,
+  readSavedProviderChoice,
+  saveProviderChoice,
+  type ProviderChoice,
+} from "../providerChoice";
 
 const URL_RE = /^https?:\/\/github\.com\/[^/]+\/[^/]+(?:\.git)?\/?$/;
 
@@ -21,6 +28,31 @@ const PROVIDER_OPTIONS: Array<{ value: AiProvider; label: string }> = [
   { value: "gemini-cli", label: "Antigravity" },
 ];
 
+/**
+ * Which provider the launcher opens on: the browser's saved preference (the same one the main
+ * form's provider panel writes), else the first provider that is ready, else Anthropic.
+ */
+export function resolveLauncherChoice(
+  saved: ProviderChoice | null,
+  status: Pick<AuthStatus, "providers"> | null,
+): ProviderChoice {
+  if (saved) return saved;
+  return (status && firstReadyProvider(status)) ?? { provider: "anthropic" };
+}
+
+/**
+ * A warning for a provider that has no credential, or null. Such a run is not refused — the
+ * worker falls back to deterministic fixtures — so say so before it is dispatched.
+ */
+export function providerWarning(
+  provider: AiProvider,
+  status: Pick<AuthStatus, "providers"> | null,
+): string | null {
+  const entry = status?.providers.find((p) => p.id === provider);
+  if (!entry || entry.ready) return null;
+  return `${entry.label} is not set up, so this run will produce fixture output instead of a model's. Connect it from the home page, or pick a provider marked Ready.`;
+}
+
 export interface FastRunLauncherProps {
   isOpen?: boolean;
   onToggle?: () => void;
@@ -35,6 +67,7 @@ export async function dispatchRun(spec: {
   includeVideo?: boolean;
   bootApp?: boolean;
   provider?: AiProvider;
+  model?: string;
 }): Promise<{ runId: string }> {
   const trimmedUrl = spec.url.trim();
   if (!URL_RE.test(trimmedUrl)) {
@@ -51,6 +84,7 @@ export async function dispatchRun(spec: {
       includeVideo: spec.includeVideo ?? true,
       bootApp: spec.bootApp ?? true,
       provider: spec.provider || "anthropic",
+      ...(spec.model ? { model: spec.model } : {}),
     }),
   });
 
@@ -77,7 +111,45 @@ export function FastRunLauncher({
   const [outputStyle, setOutputStyle] = useState<"concise" | "standard" | "deep">("standard");
   const [includeVideo, setIncludeVideo] = useState(true);
   const [bootApp, setBootApp] = useState(true);
-  const [provider, setProvider] = useState<AiProvider>("anthropic");
+  const [choice, setChoice] = useState<ProviderChoice>({ provider: "anthropic" });
+  const [providerStatus, setProviderStatus] = useState<AuthStatus | null>(null);
+  /** Set once a saved preference is restored or the user picks, so readiness never overrides it. */
+  const chosen = useRef(false);
+  const provider = choice.provider;
+
+  useEffect(() => {
+    let cancelled = false;
+    const saved = readSavedProviderChoice(window.localStorage);
+    if (saved) {
+      chosen.current = true;
+      setChoice(saved);
+    }
+    void (async () => {
+      try {
+        const res = await fetch("/api/providers", { credentials: "same-origin" });
+        if (!res.ok) return;
+        const status = (await res.json()) as AuthStatus;
+        if (cancelled) return;
+        setProviderStatus(status);
+        if (!chosen.current) setChoice(resolveLauncherChoice(null, status));
+      } catch {
+        // Readiness is advisory here; the select still works without it.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const selectProvider = (next: AiProvider) => {
+    const entry = providerStatus?.providers.find((p) => p.id === next);
+    const nextChoice: ProviderChoice = { provider: next, model: entry?.defaultModel };
+    chosen.current = true;
+    setChoice(nextChoice);
+    saveProviderChoice(window.localStorage, nextChoice);
+  };
+
+  const warning = providerWarning(provider, providerStatus);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -97,6 +169,7 @@ export function FastRunLauncher({
         includeVideo,
         bootApp,
         provider,
+        model: choice.model,
       });
 
       setLastCreatedRunId(data.runId);
@@ -231,15 +304,27 @@ export function FastRunLauncher({
               <select
                 id="launcher-provider"
                 value={provider}
-                onChange={(e) => setProvider(e.target.value as AiProvider)}
+                onChange={(e) => selectProvider(e.target.value as AiProvider)}
                 className="dm-input h-10 cursor-pointer text-[13px]"
               >
                 {PROVIDER_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value} className="bg-ink-800 text-fg">
                     {opt.label}
+                    {providerStatus?.providers.find((p) => p.id === opt.value)?.ready
+                      ? " · Ready"
+                      : ""}
                   </option>
                 ))}
               </select>
+              {warning && (
+                <p
+                  data-testid="launcher-provider-warning"
+                  role="status"
+                  className="m-0 text-[12px] leading-[1.5] text-warn"
+                >
+                  {warning}
+                </p>
+              )}
             </div>
 
             {/* Media & Boot Toggles */}
