@@ -75,10 +75,10 @@ export function SiteNav() {
             href={tab.href}
             data-testid={tab.testId}
             aria-current={tab.active ? "page" : undefined}
-            className={`flex h-8 items-center rounded-pill px-4 font-mono text-[13px] tracking-[0.04em] no-underline duration-control ease-house shrink-0 ${
+            className={`flex h-8 items-center rounded-pill px-4 font-mono text-[13px] tracking-[0.04em] no-underline transition-[background,color] duration-control ease-house shrink-0 ${
               tab.active
                 ? "bg-accent/10 text-accent border border-accent/20 font-medium"
-                : "text-fg-muted hover:text-fg border border-transparent hover:bg-white/[0.04] transition-[background,color]"
+                : "text-fg-muted hover:text-fg border border-transparent hover:bg-white/[0.04]"
             }`}
           >
             {tab.label}

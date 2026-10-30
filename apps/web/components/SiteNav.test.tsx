@@ -180,4 +180,60 @@ describe("SiteNav", () => {
       expect(casePkg?.className).toContain(activeClass);
     });
   });
+
+  describe("All required navigation links and data-testid attributes", () => {
+    it("verifies tab presence, correct link targets, active states on '/', '/dashboard', '/run/123', and '/run/123/outputs'", () => {
+      // 1. Route /
+      const home = renderNav("/");
+      expect(getNavLink(home, "nav-overview")?.href).toBe("/");
+      expect(getNavLink(home, "nav-overview")?.ariaCurrent).toBe("page");
+      expect(getNavLink(home, "nav-overview")?.className).toContain(activeClass);
+      expect(getNavLink(home, "nav-dashboard")?.href).toBe("/dashboard");
+      expect(getNavLink(home, "nav-dashboard")?.ariaCurrent).toBeUndefined();
+      expect(getNavLink(home, "nav-dashboard")?.className).toContain(inactiveClass);
+      expect(getNavLink(home, "nav-live-run")).toBeNull();
+      expect(getNavLink(home, "nav-case-package")).toBeNull();
+
+      // 2. Route /dashboard
+      const dash = renderNav("/dashboard");
+      expect(getNavLink(dash, "nav-overview")?.href).toBe("/");
+      expect(getNavLink(dash, "nav-overview")?.ariaCurrent).toBeUndefined();
+      expect(getNavLink(dash, "nav-overview")?.className).toContain(inactiveClass);
+      expect(getNavLink(dash, "nav-dashboard")?.href).toBe("/dashboard");
+      expect(getNavLink(dash, "nav-dashboard")?.ariaCurrent).toBe("page");
+      expect(getNavLink(dash, "nav-dashboard")?.className).toContain(activeClass);
+      expect(getNavLink(dash, "nav-live-run")).toBeNull();
+      expect(getNavLink(dash, "nav-case-package")).toBeNull();
+
+      // 3. Route /run/123
+      const liveRun = renderNav("/run/123");
+      expect(getNavLink(liveRun, "nav-overview")?.href).toBe("/");
+      expect(getNavLink(liveRun, "nav-overview")?.ariaCurrent).toBeUndefined();
+      expect(getNavLink(liveRun, "nav-overview")?.className).toContain(inactiveClass);
+      expect(getNavLink(liveRun, "nav-dashboard")?.href).toBe("/dashboard");
+      expect(getNavLink(liveRun, "nav-dashboard")?.ariaCurrent).toBeUndefined();
+      expect(getNavLink(liveRun, "nav-dashboard")?.className).toContain(inactiveClass);
+      expect(getNavLink(liveRun, "nav-live-run")?.href).toBe("/run/123");
+      expect(getNavLink(liveRun, "nav-live-run")?.ariaCurrent).toBe("page");
+      expect(getNavLink(liveRun, "nav-live-run")?.className).toContain(activeClass);
+      expect(getNavLink(liveRun, "nav-case-package")?.href).toBe("/run/123/outputs");
+      expect(getNavLink(liveRun, "nav-case-package")?.ariaCurrent).toBeUndefined();
+      expect(getNavLink(liveRun, "nav-case-package")?.className).toContain(inactiveClass);
+
+      // 4. Route /run/123/outputs
+      const casePkg = renderNav("/run/123/outputs");
+      expect(getNavLink(casePkg, "nav-overview")?.href).toBe("/");
+      expect(getNavLink(casePkg, "nav-overview")?.ariaCurrent).toBeUndefined();
+      expect(getNavLink(casePkg, "nav-overview")?.className).toContain(inactiveClass);
+      expect(getNavLink(casePkg, "nav-dashboard")?.href).toBe("/dashboard");
+      expect(getNavLink(casePkg, "nav-dashboard")?.ariaCurrent).toBeUndefined();
+      expect(getNavLink(casePkg, "nav-dashboard")?.className).toContain(inactiveClass);
+      expect(getNavLink(casePkg, "nav-live-run")?.href).toBe("/run/123");
+      expect(getNavLink(casePkg, "nav-live-run")?.ariaCurrent).toBeUndefined();
+      expect(getNavLink(casePkg, "nav-live-run")?.className).toContain(inactiveClass);
+      expect(getNavLink(casePkg, "nav-case-package")?.href).toBe("/run/123/outputs");
+      expect(getNavLink(casePkg, "nav-case-package")?.ariaCurrent).toBe("page");
+      expect(getNavLink(casePkg, "nav-case-package")?.className).toContain(activeClass);
+    });
+  });
 });
