@@ -114,7 +114,7 @@ describe("RunStore", () => {
       const valid = initialRunState("333333333333", spec);
       await store.write("333333333333", valid);
 
-      // Create a corrupt run directory
+      // Create a corrupt run directory with invalid syntax
       const corruptDir = await store.ensure("444444444444");
       writeFileSync(join(corruptDir, "state.json"), "{ invalid json");
 
@@ -126,6 +126,35 @@ describe("RunStore", () => {
       // Create a run directory without state.json
       await store.ensure("555555555555");
 
+      // Create a run directory with state.json containing "null"
+      const nullDir = await store.ensure("666666666666");
+      writeFileSync(join(nullDir, "state.json"), "null");
+
+      // Create a run directory with empty object {}
+      const emptyObjDir = await store.ensure("777777777777");
+      writeFileSync(join(emptyObjDir, "state.json"), "{}");
+
+      // Create a run directory with invalid non-array stages
+      const invalidStagesDir = await store.ensure("888888888888");
+      writeFileSync(
+        join(invalidStagesDir, "state.json"),
+        JSON.stringify({
+          runId: "888888888888",
+          spec: { url: "https://github.com/owner/repo" },
+          state: "done",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:01:00.000Z",
+          stages: "not-an-array",
+        }),
+      );
+
+      // Verify read() safely returns undefined for all corrupt shapes
+      await expect(store.read("444444444444")).resolves.toBeUndefined();
+      await expect(store.read("666666666666")).resolves.toBeUndefined();
+      await expect(store.read("777777777777")).resolves.toBeUndefined();
+      await expect(store.read("888888888888")).resolves.toBeUndefined();
+
+      // Verify list() skips all invalid/corrupt runs and returns only the valid one
       const result = await store.list();
       expect(result.total).toBe(1);
       expect(result.runs[0]?.runId).toBe("333333333333");

@@ -72,8 +72,44 @@ describe("/api/runs", () => {
     });
 
     it("parses query parameters and clamps limit and offset", async () => {
+      // Seed matching and nonmatching runs with distinct query and durations
+      const matchShort = initialRunState("777700000001", {
+        url: "https://github.com/filter-test-org/match-alpha",
+      });
+      matchShort.state = "queued";
+      matchShort.createdAt = "2026-01-01T00:00:00.000Z";
+      matchShort.updatedAt = "2026-01-01T00:00:10.000Z"; // duration: 10s
+
+      const matchLong = initialRunState("777700000002", {
+        url: "https://github.com/filter-test-org/match-beta",
+      });
+      matchLong.state = "running";
+      matchLong.createdAt = "2026-01-01T00:00:00.000Z";
+      matchLong.updatedAt = "2026-01-01T00:00:30.000Z"; // duration: 30s
+
+      const nonMatchStatus = initialRunState("777700000003", {
+        url: "https://github.com/filter-test-org/match-gamma",
+      });
+      nonMatchStatus.state = "done";
+      nonMatchStatus.createdAt = "2026-01-01T00:00:00.000Z";
+      nonMatchStatus.updatedAt = "2026-01-01T00:00:20.000Z";
+
+      const nonMatchQuery = initialRunState("777700000004", {
+        url: "https://github.com/other-org/unrelated",
+      });
+      nonMatchQuery.state = "running";
+      nonMatchQuery.createdAt = "2026-01-01T00:00:00.000Z";
+      nonMatchQuery.updatedAt = "2026-01-01T00:00:20.000Z";
+
+      await Promise.all([
+        store.write(matchShort.runId, matchShort),
+        store.write(matchLong.runId, matchLong),
+        store.write(nonMatchStatus.runId, nonMatchStatus),
+        store.write(nonMatchQuery.runId, nonMatchQuery),
+      ]);
+
       const req = new Request(
-        "http://localhost:3000/api/runs?limit=999&offset=-5&status=active&q=next.js&sortBy=duration&sortOrder=asc",
+        "http://localhost:3000/api/runs?limit=999&offset=-5&status=active&q=filter-test-org&sortBy=duration&sortOrder=asc",
       );
       const res = await GET(req);
 
@@ -82,8 +118,13 @@ describe("/api/runs", () => {
 
       expect(data.limit).toBe(100); // clamped to max 100
       expect(data.offset).toBe(0); // clamped to >= 0
+      expect(data.runs.length).toBe(2);
+      expect(data.runs.map((r) => r.runId)).toEqual(["777700000001", "777700000002"]);
+      expect(data.runs[0]?.durationMs).toBe(10_000);
+      expect(data.runs[1]?.durationMs).toBe(30_000);
+      expect(data.runs[0]?.durationMs).toBeLessThanOrEqual(data.runs[1]?.durationMs!);
       expect(data.runs.every((r) => r.state === "queued" || r.state === "running")).toBe(true);
-      expect(data.runs.every((r) => r.spec.url.includes("next.js"))).toBe(true);
+      expect(data.runs.every((r) => r.spec.url.includes("filter-test-org"))).toBe(true);
     });
 
     it("handles includeMetrics=false query param", async () => {

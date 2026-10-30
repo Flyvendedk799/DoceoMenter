@@ -44,7 +44,9 @@ export class RunStore {
     const file = join(this.runDir(runId), "state.json");
     if (!existsSync(file)) return undefined;
     try {
-      return JSON.parse(await readFile(file, "utf-8")) as RunState;
+      const parsed = JSON.parse(await readFile(file, "utf-8"));
+      if (!isValidRunState(parsed)) return undefined;
+      return parsed;
     } catch {
       // A corrupt/partial state.json degrades to "no state" rather than
       // throwing and making the run permanently unreadable.
@@ -100,7 +102,9 @@ export class RunStore {
       await Promise.all(
         runIds.map(async (id) => {
           try {
-            return await this.read(id);
+            const state = await this.read(id);
+            if (!isValidRunState(state)) return undefined;
+            return state;
           } catch {
             return undefined;
           }
@@ -109,57 +113,65 @@ export class RunStore {
     ).filter((s): s is RunState => s !== undefined);
 
     // 4 & 5. Compute durationMs and stageSummary for each valid run
-    const allItems: RunListItem[] = states.map((state) => {
-      const start = new Date(state.createdAt).getTime();
-      const end = new Date(state.updatedAt).getTime();
-      const durationMs = Math.max(
-        0,
-        Number.isFinite(end) && Number.isFinite(start) ? end - start : 0,
-      );
+    const allItems: RunListItem[] = [];
+    for (const state of states) {
+      try {
+        if (!isValidRunState(state)) continue;
 
-      const stages = state.stages ?? [];
-      let resolved = 0;
-      let failed = 0;
-      let runningStage: StageName | undefined;
-      let lastResolvedStage: StageName | undefined;
+        const start = new Date(state.createdAt).getTime();
+        const end = new Date(state.updatedAt).getTime();
+        const durationMs = Math.max(
+          0,
+          Number.isFinite(end) && Number.isFinite(start) ? end - start : 0,
+        );
 
-      for (const stage of stages) {
-        if (stage.status === "running") {
-          if (!runningStage) {
-            runningStage = stage.name;
+        const stages = Array.isArray(state.stages) ? state.stages : [];
+        let resolved = 0;
+        let failed = 0;
+        let runningStage: StageName | undefined;
+        let lastResolvedStage: StageName | undefined;
+
+        for (const stage of stages) {
+          if (!stage || typeof stage !== "object") continue;
+          if (stage.status === "running") {
+            if (!runningStage) {
+              runningStage = stage.name;
+            }
+          } else if (
+            stage.status === "done" ||
+            stage.status === "degraded" ||
+            stage.status === "skipped"
+          ) {
+            resolved++;
+            lastResolvedStage = stage.name;
+          } else if (stage.status === "failed") {
+            failed++;
           }
-        } else if (
-          stage.status === "done" ||
-          stage.status === "degraded" ||
-          stage.status === "skipped"
-        ) {
-          resolved++;
-          lastResolvedStage = stage.name;
-        } else if (stage.status === "failed") {
-          failed++;
         }
+
+        const stageSummary: RunStageSummary = {
+          total: Array.isArray(state.stages) ? state.stages.length : 10,
+          resolved,
+          failed,
+          current: runningStage ?? lastResolvedStage,
+        };
+
+        allItems.push({
+          runId: state.runId,
+          spec: state.spec,
+          state: state.state,
+          createdAt: state.createdAt,
+          updatedAt: state.updatedAt,
+          durationMs,
+          provider: state.provider,
+          artifacts: state.artifacts,
+          error: state.error,
+          stageSummary,
+        });
+      } catch {
+        continue;
       }
-
-      const stageSummary: RunStageSummary = {
-        total: state.stages?.length ?? 10,
-        resolved,
-        failed,
-        current: runningStage ?? lastResolvedStage,
-      };
-
-      return {
-        runId: state.runId,
-        spec: state.spec,
-        state: state.state,
-        createdAt: state.createdAt,
-        updatedAt: state.updatedAt,
-        durationMs,
-        provider: state.provider,
-        artifacts: state.artifacts,
-        error: state.error,
-        stageSummary,
-      };
-    });
+    }
 
     // 6. Calculate aggregate RunMetrics across all valid runs:
     let queuedRuns = 0;
@@ -325,4 +337,17 @@ export function initialRunState(runId: string, spec: RunSpec, now = new Date()):
     updatedAt: now.toISOString(),
     stages,
   };
+}
+
+export function isValidRunState(state: unknown): state is RunState {
+  if (!state || typeof state !== "object" || Array.isArray(state)) return false;
+  const s = state as Record<string, unknown>;
+  if (typeof s.runId !== "string" || !s.runId) return false;
+  if (!s.spec || typeof s.spec !== "object" || Array.isArray(s.spec)) return false;
+  const spec = s.spec as Record<string, unknown>;
+  if (typeof spec.url !== "string") return false;
+  if (typeof s.state !== "string") return false;
+  if (typeof s.createdAt !== "string" || typeof s.updatedAt !== "string") return false;
+  if (s.stages !== undefined && !Array.isArray(s.stages)) return false;
+  return true;
 }
