@@ -60,6 +60,18 @@ describe("SiteNav", () => {
       expect(html).toContain("overflow-x-auto");
       expect(html).toContain("flex max-w-full overflow-x-auto rounded-pill border border-white/10 bg-ink-900/40 p-1 backdrop-blur-md");
     });
+
+    it("renders all four tabs on a run page inside the scrollable capsule wrapper with shrink-0 to prevent clipping on mobile", () => {
+      const html = renderNav("/run/123");
+      expect(html).toContain("overflow-x-auto");
+
+      const tabIds = ["nav-overview", "nav-dashboard", "nav-live-run", "nav-case-package"];
+      for (const id of tabIds) {
+        const link = getNavLink(html, id);
+        expect(link).not.toBeNull();
+        expect(link?.className).toContain("shrink-0");
+      }
+    });
   });
 
   describe("Route '/' (Overview)", () => {
