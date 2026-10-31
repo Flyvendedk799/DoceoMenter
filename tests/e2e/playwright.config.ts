@@ -31,7 +31,9 @@ export default defineConfig({
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: startWebServer
     ? {
-        command: `pnpm --filter @doceomenter/web exec next dev -p ${port}`,
+        // A production build (from `pnpm build`) is served with `next start`: no on-demand compiles, so timings hold under load.
+        // Without one, `next dev` keeps the suite runnable straight from a checkout.
+        command: `pnpm --filter @doceomenter/web exec sh -c "if [ -f .next/BUILD_ID ]; then exec next start -p ${port}; else exec next dev -p ${port}; fi"`,
         url: baseURL,
         reuseExistingServer: !process.env.CI,
         timeout: 120_000,
