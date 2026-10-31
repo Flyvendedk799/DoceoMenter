@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -15,14 +16,41 @@ export function SiteNav() {
   const pathname = usePathname() ?? "/";
   const runId = pathname.match(/^\/run\/([^/]+)/)?.[1];
   const onOutputs = Boolean(runId) && pathname.endsWith("/outputs");
+  const onDashboard = pathname === "/dashboard" || pathname.startsWith("/dashboard/");
 
-  const tabs: Array<{ label: string; href: string; active: boolean }> = [
-    { label: "overview", href: "/", active: pathname === "/" },
+  const tabs: Array<{
+    label: string;
+    href: string;
+    active: boolean;
+    testId: string;
+  }> = [
+    {
+      label: "overview",
+      href: "/",
+      active: pathname === "/",
+      testId: "nav-overview",
+    },
+    {
+      label: "dashboard",
+      href: "/dashboard",
+      active: onDashboard,
+      testId: "nav-dashboard",
+    },
   ];
   if (runId) {
     tabs.push(
-      { label: "live run", href: `/run/${runId}`, active: !onOutputs },
-      { label: "case package", href: `/run/${runId}/outputs`, active: onOutputs },
+      {
+        label: "live run",
+        href: `/run/${runId}`,
+        active: !onOutputs && !onDashboard,
+        testId: "nav-live-run",
+      },
+      {
+        label: "case package",
+        href: `/run/${runId}/outputs`,
+        active: onOutputs,
+        testId: "nav-case-package",
+      },
     );
   }
 
@@ -35,16 +63,22 @@ export function SiteNav() {
           style={{ animation: "dmPulse 3.4s ease-in-out infinite" }}
         />
         <span className="font-display text-[21px] leading-none tracking-[-0.01em]">DoceoMenter</span>
+        <span className="hidden sm:inline-block rounded-pill border border-white/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-fg-faint">
+          Ops
+        </span>
       </Link>
 
-      <div className="ml-auto flex gap-1 rounded-pill border border-white/10 p-1">
+      <div className="ml-auto flex max-w-full overflow-x-auto rounded-pill border border-white/10 bg-ink-900/40 p-1 backdrop-blur-md gap-1">
         {tabs.map((tab) => (
           <Link
             key={tab.href}
             href={tab.href}
+            data-testid={tab.testId}
             aria-current={tab.active ? "page" : undefined}
-            className={`flex h-8 items-center rounded-pill px-4 font-mono text-[13px] tracking-[0.04em] no-underline transition-[background,color] duration-control ease-house ${
-              tab.active ? "bg-accent/10 text-accent" : "text-fg-muted hover:text-fg"
+            className={`flex h-8 items-center rounded-pill px-4 font-mono text-[13px] tracking-[0.04em] no-underline transition-[background,color] duration-control ease-house shrink-0 ${
+              tab.active
+                ? "bg-accent/10 text-accent border border-accent/20 font-medium"
+                : "text-fg-muted hover:text-fg border border-transparent hover:bg-white/[0.04]"
             }`}
           >
             {tab.label}

@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { publicRunState } from "@doceomenter/shared";
 import { RunProgress } from "../../../components/RunProgress";
 import { getStore } from "../../../lib/server";
 
@@ -11,7 +12,7 @@ export default async function RunPage({ params }: { params: { id: string } }) {
   return (
     <main className="min-h-screen bg-ink-900 text-fg">
       <div className="mx-auto max-w-[1180px] px-5 pb-28 pt-14 sm:px-7">
-        <RunProgress initial={state} />
+        <RunProgress initial={publicRunState(state)} />
       </div>
     </main>
   );

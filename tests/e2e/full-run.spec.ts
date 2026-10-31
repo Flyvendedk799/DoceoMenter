@@ -26,7 +26,8 @@ test("home → run → artifacts", async ({ page, baseURL }) => {
   await page.getByRole("button", { name: "Generate case" }).click();
 
   // We should land on /run/<id> with the progress UI.
-  await page.waitForURL(/\/run\/[a-f0-9]+$/, { timeout: 15_000 });
+  // Generous: under `next dev` the first POST /api/runs and /run/[id] each compile on demand (16 s seen on a shared CI box).
+  await page.waitForURL(/\/run\/[a-f0-9]+$/, { timeout: 60_000 });
   await expect(page.getByText(/^Run /)).toBeVisible();
 
   // Wait for the deck button to appear (state goes done|partial).

@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { publicRunState } from "@doceomenter/shared";
 import { OutputsViewer } from "../../../../components/OutputsViewer";
 import { getStore } from "../../../../lib/server";
 
@@ -11,7 +12,7 @@ export default async function OutputsPage({ params }: { params: { id: string } }
 
   return (
     <main className="min-h-screen bg-ink-900 text-fg">
-      <OutputsViewer state={state} />
+      <OutputsViewer state={publicRunState(state)} />
     </main>
   );
 }

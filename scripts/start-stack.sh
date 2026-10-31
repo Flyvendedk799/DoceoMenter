@@ -21,15 +21,26 @@ export DOCEOMENTER_SECRET_KEY=${DOCEOMENTER_SECRET_KEY:-doceomenter-local-dev-se
 export CREDENTIALS_DIR=${CREDENTIALS_DIR:-/tmp/doceomenter-credentials}
 export ALLOW_LOCAL_CLI=${ALLOW_LOCAL_CLI:-false}
 
-if ! redis-cli -u "$REDIS_URL" ping >/dev/null 2>&1; then
-  echo "[stack] starting redis"
-  redis-server --daemonize yes --dir /tmp --logfile /tmp/redis.log --port 6379
-  sleep 0.5
+if command -v redis-server >/dev/null 2>&1; then
+  if ! command -v redis-cli >/dev/null 2>&1 || ! redis-cli -u "$REDIS_URL" ping >/dev/null 2>&1; then
+    echo "[stack] starting redis"
+    redis-server --daemonize yes --dir /tmp --logfile /tmp/redis.log --port 6379 || true
+    sleep 0.5
+  fi
 fi
 
-echo "[stack] starting worker"
-( cd "$ROOT/apps/worker" && node dist/index.js > /tmp/doceomenter-worker.log 2>&1 ) &
-echo $! > "$PIDS/worker.pid"
+if command -v redis-cli >/dev/null 2>&1 && redis-cli -u "$REDIS_URL" ping >/dev/null 2>&1; then
+  echo "[stack] starting worker"
+  ( cd "$ROOT/apps/worker" && node dist/index.js > /tmp/doceomenter-worker.log 2>&1 ) &
+  echo $! > "$PIDS/worker.pid"
+else
+  echo "[stack] redis not running; web will use in-process pipeline"
+fi
+
+if curl -sS -o /dev/null -w "%{http_code}" "http://127.0.0.1:$PORT" 2>/dev/null | grep -q 200; then
+  echo "[stack] already up"
+  exit 0
+fi
 
 echo "[stack] starting web"
 ( cd "$ROOT/apps/web" && pnpm next dev -p "$PORT" > /tmp/doceomenter-web.log 2>&1 ) &

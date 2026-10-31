@@ -137,6 +137,12 @@ export type RunState = {
     zip?: string;
   };
   error?: string;
+  /**
+   * The browser account (see the web app's account cookie) that started this run. It is what
+   * scopes the dashboard listing to the caller's own runs. Server-side only: strip it with
+   * `publicRunState` before a state leaves the server.
+   */
+  ownerAccountId?: string;
 };
 
 export type CaptureManifestEntry = {
@@ -178,6 +184,63 @@ export type RunEvent =
   | { type: "asset"; shotId: string; thumbnailUrl?: string; kind: "screenshot" | "video" }
   | { type: "done"; state: TerminalState; artifacts: NonNullable<RunState["artifacts"]> }
   | { type: "error"; error: string };
+
+export type ListRunsOptions = {
+  limit?: number; // default 20, max 100
+  offset?: number; // default 0
+  status?: "all" | "active" | "queued" | "running" | "done" | "partial" | "failed" | "cancelled";
+  q?: string; // substring match on url or owner/repo
+  sortBy?: "createdAt" | "updatedAt" | "duration"; // default createdAt
+  sortOrder?: "asc" | "desc"; // default desc
+  includeMetrics?: boolean; // default true
+  /**
+   * Only list runs started by this account. `null` means "a caller with no account", which
+   * owns nothing and so lists nothing. Omit to list every run (worker/admin use only).
+   */
+  ownerAccountId?: string | null;
+};
+
+export type RunStageSummary = {
+  total: number;
+  resolved: number; // done + degraded + skipped
+  failed: number;
+  current?: StageName;
+};
+
+export type RunListItem = {
+  runId: string;
+  spec: RunSpec;
+  state: "queued" | "running" | TerminalState;
+  createdAt: string;
+  updatedAt: string;
+  durationMs: number;
+  provider?: RunState["provider"];
+  artifacts?: RunState["artifacts"];
+  error?: string;
+  stageSummary: RunStageSummary;
+};
+
+export type RunMetrics = {
+  totalRuns: number;
+  queuedRuns: number;
+  runningRuns: number;
+  doneRuns: number;
+  partialRuns: number;
+  failedRuns: number;
+  cancelledRuns: number;
+  activeRuns: number;
+  successRatePct: number;
+  avgDurationMs: number;
+  totalArtifacts: number;
+};
+
+export type ListRunsResponse = {
+  runs: RunListItem[];
+  total: number;
+  limit: number;
+  offset: number;
+  metrics?: RunMetrics;
+};
 
 export type {
   Caption,

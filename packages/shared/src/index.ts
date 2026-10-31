@@ -1,6 +1,13 @@
 export * from "./types.js";
 export * from "./schemas.js";
 export * from "./constants.js";
+export type {
+  ListRunsOptions,
+  RunStageSummary,
+  RunListItem,
+  RunMetrics,
+  ListRunsResponse,
+} from "./types.js";
 export {
   ANTIGRAVITY_CLIENT_METADATA,
   ANTIGRAVITY_GOOG_API_CLIENT,

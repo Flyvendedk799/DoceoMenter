@@ -257,9 +257,16 @@ async function captureReadme(
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 15_000 });
     const md = page.locator(".markdown-body, article.markdown-body");
     const pngPath = join(ctx.outDir, "screenshots", `${shot.id}.png`);
+    let tookShot = false;
     if (await md.count()) {
-      await md.first().screenshot({ path: pngPath, type: "png", animations: "disabled" });
-    } else {
+      try {
+        await md.first().screenshot({ path: pngPath, type: "png", animations: "disabled" });
+        tookShot = true;
+      } catch (err) {
+        ctx.log(`[capture] ${shot.id} element screenshot failed (${(err as Error).message}), falling back to page screenshot`);
+      }
+    }
+    if (!tookShot) {
       await page.screenshot({ path: pngPath, type: "png", fullPage: false, animations: "disabled" });
     }
     const q = await evaluateImageQuality(pngPath);

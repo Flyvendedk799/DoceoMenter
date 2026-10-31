@@ -5,14 +5,18 @@ import { ClaudeTerminal, setClaudeApiPrefix } from "@flyvendedk799/ai-auth/react
 import "@flyvendedk799/ai-auth/react/terminal.css";
 import type { AuthStatus, ProviderStatus } from "@doceomenter/auth";
 import type { AiProvider } from "@doceomenter/shared";
+import {
+  firstReadyProvider,
+  readSavedProviderChoice,
+  saveProviderChoice,
+  type ProviderChoice,
+} from "./providerChoice";
 
 // The routes are mounted at Next's own path, which happens to be the library's default. Set
 // explicitly anyway: the two agreeing by coincidence is how a namespaced API breaks the login.
 setClaudeApiPrefix("/api/claude-code");
 
-const PREFERENCE_KEY = "doceomenter.provider";
-
-export type ProviderChoice = { provider: AiProvider; model?: string };
+export type { ProviderChoice };
 
 /**
  * Which of the six ways of paying this run should use.
@@ -49,8 +53,8 @@ export function ProviderPanel({
       // means the first click on Generate fails, and the failure is the app's fault, not the
       // user's — they never chose anything.
       if (!chosen.current) {
-        const ready = next.providers.find((provider) => provider.ready);
-        if (ready) onChange({ provider: ready.id as AiProvider, model: ready.defaultModel });
+        const ready = firstReadyProvider(next);
+        if (ready) onChange(ready);
       }
     } catch (e) {
       setError(`Could not read provider status: ${(e as Error).message}`);
@@ -67,17 +71,10 @@ export function ProviderPanel({
   // The chosen provider is a preference, not a secret, so the browser is the right place for
   // it. Everything that could spend money now lives on the server.
   useEffect(() => {
-    const saved = window.localStorage.getItem(PREFERENCE_KEY);
+    const saved = readSavedProviderChoice(window.localStorage);
     if (saved) {
-      try {
-        const parsed = JSON.parse(saved) as ProviderChoice;
-        if (parsed.provider) {
-          chosen.current = true;
-          onChange(parsed);
-        }
-      } catch {
-        window.localStorage.removeItem(PREFERENCE_KEY);
-      }
+      chosen.current = true;
+      onChange(saved);
     }
     // Runs once: this restores a preference, it does not track later changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -86,7 +83,7 @@ export function ProviderPanel({
   const select = (choice: ProviderChoice) => {
     chosen.current = true;
     onChange(choice);
-    window.localStorage.setItem(PREFERENCE_KEY, JSON.stringify(choice));
+    saveProviderChoice(window.localStorage, choice);
   };
 
   const selected = status?.providers?.find((p) => p.id === value.provider);
@@ -102,7 +99,7 @@ export function ProviderPanel({
     chosen.current = true;
     const next = { provider: value.provider, model: selected.defaultModel };
     onChange(next);
-    window.localStorage.setItem(PREFERENCE_KEY, JSON.stringify(next));
+    saveProviderChoice(window.localStorage, next);
   }, [selected, value.model, value.provider, onChange]);
 
   // Report the selected credential upward so a collapsed disclosure can say what will be
