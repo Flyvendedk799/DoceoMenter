@@ -537,6 +537,79 @@ describe("Dashboard - RunsFeed fetching & polling", () => {
     feed.dispose();
   });
 
+  it("lets a poll slower than the interval land: later ticks skip instead of cancelling it", async () => {
+    vi.useFakeTimers();
+    const { calls, fetchImpl } = controlledFetch();
+    const states: RunsFeedState[] = [];
+    const feed = new RunsFeed((s) => states.push(s), fetchImpl);
+
+    const first = feed.setQuery(baseQuery);
+    calls[0]!.resolve(page([{ runId: "a", state: "running" }], 1));
+    await first;
+    await vi.advanceTimersByTimeAsync(POLLING_INTERVAL_MS);
+    expect(calls).toHaveLength(2);
+
+    // The poll takes 25 s: two more ticks pass while it is in flight. Neither aborts it nor
+    // starts another request.
+    await vi.advanceTimersByTimeAsync(POLLING_INTERVAL_MS * 2.5);
+    expect(calls).toHaveLength(2);
+    expect(calls[1]!.signal?.aborted).toBe(false);
+
+    // It lands and updates the page; the run is still active, so polling carries on.
+    calls[1]!.resolve(page([{ runId: "a", state: "running" }, { runId: "b", state: "queued" }], 2));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(states.at(-1)?.runs.map((r) => r.runId)).toEqual(["a", "b"]);
+    expect(states.at(-1)?.metrics?.activeRuns).toBe(2);
+    expect(states.at(-1)?.polling).toBe(true);
+    await vi.advanceTimersByTimeAsync(POLLING_INTERVAL_MS);
+    expect(calls).toHaveLength(3);
+    expect(calls[2]!.url).toBe(calls[0]!.url);
+
+    // That one is slow too and reports the run finished: polling stops.
+    await vi.advanceTimersByTimeAsync(POLLING_INTERVAL_MS * 1.5);
+    expect(calls).toHaveLength(3);
+    calls[2]!.resolve(page([{ runId: "a", state: "done" }], 0));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(states.at(-1)?.runs[0]?.state).toBe("done");
+    expect(states.at(-1)?.polling).toBe(false);
+    await vi.advanceTimersByTimeAsync(POLLING_INTERVAL_MS * 3);
+    expect(calls).toHaveLength(3);
+
+    feed.dispose();
+  });
+
+  it("changing filters while a poll is in flight cancels it and drops its late response", async () => {
+    vi.useFakeTimers();
+    const { calls, fetchImpl } = controlledFetch();
+    const states: RunsFeedState[] = [];
+    const feed = new RunsFeed((s) => states.push(s), fetchImpl);
+
+    const first = feed.setQuery(baseQuery);
+    calls[0]!.resolve(page([{ runId: "a", state: "running" }], 1));
+    await first;
+    await vi.advanceTimersByTimeAsync(POLLING_INTERVAL_MS);
+    expect(calls).toHaveLength(2);
+
+    const failed = feed.setQuery({ ...baseQuery, status: "failed" });
+    expect(calls).toHaveLength(3);
+    expect(calls[1]!.signal?.aborted).toBe(true);
+    expect(calls[2]!.url).toContain("status=failed");
+    calls[2]!.resolve(page([{ runId: "f", state: "failed" }], 1));
+    await failed;
+
+    // The cancelled "All" poll still answers late: it must not replace the "Failed" rows.
+    calls[1]!.resolve(page([{ runId: "x", state: "done" }], 0));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(states.at(-1)?.runs.map((r) => r.runId)).toEqual(["f"]);
+    expect(states.at(-1)?.polling).toBe(true);
+
+    // Polling continues with the new filters.
+    await vi.advanceTimersByTimeAsync(POLLING_INTERVAL_MS);
+    expect(calls).toHaveLength(4);
+    expect(calls[3]!.url).toBe(calls[2]!.url);
+    feed.dispose();
+  });
+
   it("drops an older response that lands after a newer filter's response", async () => {
     const { calls, fetchImpl } = controlledFetch();
     const states: RunsFeedState[] = [];
@@ -590,6 +663,27 @@ describe("Dashboard - RunsFeed fetching & polling", () => {
 
     await vi.advanceTimersByTimeAsync(POLLING_INTERVAL_MS * 2);
     expect(calls).toHaveLength(1);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("unmounting during a slow poll cancels it and ignores its answer", async () => {
+    vi.useFakeTimers();
+    const { calls, fetchImpl } = controlledFetch();
+    const onChange = vi.fn();
+    const feed = new RunsFeed(onChange, fetchImpl);
+
+    const first = feed.setQuery(baseQuery);
+    calls[0]!.resolve(page([{ runId: "a", state: "running" }], 1));
+    await first;
+    await vi.advanceTimersByTimeAsync(POLLING_INTERVAL_MS);
+    expect(calls).toHaveLength(2);
+
+    feed.dispose();
+    onChange.mockClear();
+    expect(calls[1]!.signal?.aborted).toBe(true);
+    calls[1]!.resolve(page([{ runId: "a", state: "done" }], 0));
+    await vi.advanceTimersByTimeAsync(POLLING_INTERVAL_MS * 3);
+    expect(calls).toHaveLength(2);
     expect(onChange).not.toHaveBeenCalled();
   });
 });

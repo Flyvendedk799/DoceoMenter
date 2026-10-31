@@ -50,9 +50,13 @@ type Timers = {
  * The dashboard's run list: fetches for the current controls, polls while any run is active,
  * and stops once none is.
  *
- * Only the newest request may update the page. Each request aborts the one before it and
- * carries a sequence number, so a slow poll for "All" that lands after a request for "Failed"
- * is dropped instead of replacing the rows while "Failed" stays selected.
+ * Only the newest request may update the page. A new query aborts the request before it and
+ * every request carries a sequence number, so a slow poll for "All" that lands after a request
+ * for "Failed" is dropped instead of replacing the rows while "Failed" stays selected.
+ *
+ * A poll tick never cancels anything: while a request for the current query is still in
+ * flight the tick is skipped, so a backend slower than the interval still gets its response
+ * onto the page instead of every request being aborted by the next tick.
  */
 export class RunsFeed {
   private query: RunsQuery | null = null;
@@ -87,6 +91,9 @@ export class RunsFeed {
 
   private async load(isPoll: boolean): Promise<void> {
     if (this.disposed || !this.query) return;
+    // The in-flight request already asks for the current query (a new query goes through
+    // setQuery, not a tick): let it land rather than abort it.
+    if (isPoll && this.inflight !== null) return;
     const seq = ++this.seq;
     this.inflight?.abort();
     const controller = new AbortController();
