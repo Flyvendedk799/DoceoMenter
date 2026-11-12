@@ -1,0 +1,62 @@
+# Runs on ServerHoster (in Docker on the VPS), not GitHub Actions.
+# Replaces .github/workflows/ci.yml: pushes to main and pull requests into main.
+# Both former jobs (unit + e2e) run here, one after the other, sharing one
+# install and build. The image matches the playwright version in packages/capture
+# and has Chromium's system libraries preinstalled.
+image: mcr.microsoft.com/playwright:v1.56.1-noble
+timeoutMinutes: 40
+memoryMb: 6144
+cpus: 2
+env:
+  # pnpm comes from corepack, linked into /tmp/bin (the image's own bin is read-only).
+  PATH: /tmp/ci-bin:/tmp/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+  # The capture build runs `playwright install chromium`, which needs a writable
+  # browsers folder; the image's /ms-playwright is read-only here. /cache keeps
+  # the download between runs. The image still supplies Chromium's system libraries.
+  PLAYWRIGHT_BROWSERS_PATH: /cache/ms-playwright
+steps:
+  - name: Install pnpm
+    run: mkdir -p /tmp/bin && corepack enable --install-directory /tmp/bin && pnpm --version
+  - name: Install
+    run: pnpm install --frozen-lockfile=false
+  - name: Build packages
+    run: |
+      set -e
+      pnpm --filter @doceomenter/shared build
+      pnpm --filter @doceomenter/auth build
+      pnpm --filter @doceomenter/claude build
+      pnpm --filter @doceomenter/boot build
+      pnpm --filter @doceomenter/capture build
+      pnpm --filter @doceomenter/render build
+      pnpm --filter @doceomenter/worker build
+  - name: Typecheck web
+    run: pnpm --filter @doceomenter/web typecheck
+  - name: Unit + integration tests
+    run: |
+      set -e
+      pnpm --filter @doceomenter/shared test
+      pnpm --filter @doceomenter/auth test
+      pnpm --filter @doceomenter/claude test
+      pnpm --filter @doceomenter/boot test
+      pnpm --filter @doceomenter/capture test
+      pnpm --filter @doceomenter/render test
+      pnpm --filter @doceomenter/worker test
+  - name: Build web
+    run: pnpm --filter @doceomenter/web build
+  # Redis inside the job (no service containers here); start-stack.sh finds it on PATH.
+  - name: Start Redis
+    run: .survhub/services.sh redis
+  - name: Start stack
+    run: REDIS_URL=redis://127.0.0.1:6379 DATA_ROOT=/tmp/doceomenter-runs PORT=3010 ./scripts/start-stack.sh
+  # start-stack.sh already runs the server, so Playwright must not start its own
+  # (tests/e2e/playwright.config.ts: E2E_SKIP_WEBSERVER=1 when the stack is managed elsewhere).
+  - name: E2E
+    run: |
+      E2E_SKIP_WEBSERVER=1 E2E_BASE_URL=http://127.0.0.1:3010 pnpm --filter @doceomenter/e2e test || {
+        status=$?
+        echo "── worker log"; tail -n 100 /tmp/doceomenter-worker.log || true
+        echo "── web log"; tail -n 100 /tmp/doceomenter-web.log || true
+        ./scripts/stop-stack.sh
+        exit $status
+      }
+      ./scripts/stop-stack.sh
