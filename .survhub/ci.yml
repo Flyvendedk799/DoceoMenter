@@ -48,9 +48,11 @@ steps:
     run: .survhub/services.sh redis
   - name: Start stack
     run: REDIS_URL=redis://127.0.0.1:6379 DATA_ROOT=/tmp/doceomenter-runs PORT=3010 ./scripts/start-stack.sh
+  # start-stack.sh already runs the server, so Playwright must not start its own
+  # (tests/e2e/playwright.config.ts: E2E_SKIP_WEBSERVER=1 when the stack is managed elsewhere).
   - name: E2E
     run: |
-      E2E_BASE_URL=http://127.0.0.1:3010 pnpm --filter @doceomenter/e2e test || {
+      E2E_SKIP_WEBSERVER=1 E2E_BASE_URL=http://127.0.0.1:3010 pnpm --filter @doceomenter/e2e test || {
         status=$?
         echo "── worker log"; tail -n 100 /tmp/doceomenter-worker.log || true
         echo "── web log"; tail -n 100 /tmp/doceomenter-web.log || true
