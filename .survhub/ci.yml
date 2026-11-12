@@ -2,7 +2,7 @@
 # Replaces .github/workflows/ci.yml: pushes to main and pull requests into main.
 # Both former jobs (unit + e2e) run here, one after the other, sharing one
 # install and build. The image matches the playwright version in packages/capture
-# and has Chromium and its system libraries preinstalled.
+# and has Chromium's system libraries preinstalled.
 image: mcr.microsoft.com/playwright:v1.56.1-noble
 timeoutMinutes: 40
 memoryMb: 6144
@@ -10,6 +10,10 @@ cpus: 2
 env:
   # pnpm comes from corepack, linked into /tmp/bin (the image's own bin is read-only).
   PATH: /tmp/ci-bin:/tmp/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+  # The capture build runs `playwright install chromium`, which needs a writable
+  # browsers folder; the image's /ms-playwright is read-only here. /cache keeps
+  # the download between runs. The image still supplies Chromium's system libraries.
+  PLAYWRIGHT_BROWSERS_PATH: /cache/ms-playwright
 steps:
   - name: Install pnpm
     run: mkdir -p /tmp/bin && corepack enable --install-directory /tmp/bin && pnpm --version
